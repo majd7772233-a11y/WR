@@ -69,15 +69,21 @@ fun LeaderboardScreen(
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
+                .padding(paddingValues),
+            contentAlignment = Alignment.TopCenter
         ) {
-            itemsIndexed(leaderboardList) { index, item ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .widthIn(max = 680.dp)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                itemsIndexed(leaderboardList) { index, item ->
                 val rank = index + 1
                 val isUser = item.name.contains("(You)")
                 val rankBadgeColor = when (rank) {
@@ -162,6 +168,7 @@ fun LeaderboardScreen(
                     }
                 }
             }
+        }
         }
     }
 }

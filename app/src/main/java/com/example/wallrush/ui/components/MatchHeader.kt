@@ -34,10 +34,12 @@ fun PlayerHeaderCard(
     isCurrentTurn: Boolean,
     isTop: Boolean,
     language: AppLanguage,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLocalUser: Boolean = false,
+    theme: GameTheme = GameTheme.MainCyberNeon
 ) {
     val isP1 = player.id == PlayerId.PLAYER_1
-    val accentColor = if (isP1) Player1Primary else Player2Primary
+    val accentColor = if (isP1) theme.p1Primary else theme.p2Primary
     val containerColor = if (isCurrentTurn) SurfaceCardLight else SurfaceCard
 
     val infiniteTransition = rememberInfiniteTransition(label = "turnBorder")
@@ -107,7 +109,7 @@ fun PlayerHeaderCard(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = if (isP1) Strings.get("your_turn", language) else Strings.get("opponents_turn", language),
+                                    text = if (isLocalUser) Strings.get("your_turn", language) else Strings.get("opponents_turn", language),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Black,
                                     color = Color.Black,

@@ -60,6 +60,9 @@ class P2PGameConnection(
     @Volatile
     private var isClosingExpected = false
 
+    private var hostWallsCount: Int = 10
+    private var hostTimeLimit: Int = 300
+
     private var heartbeatJob: Job? = null
     private var readJob: Job? = null
 
@@ -69,6 +72,8 @@ class P2PGameConnection(
     fun startWifiHost(localPlayerName: String, localAvatar: Int, wallsCount: Int, timeLimit: Int, port: Int = 8888) {
         disconnect()
         isClosingExpected = false
+        hostWallsCount = wallsCount
+        hostTimeLimit = timeLimit
         scope.launch {
             try {
                 serverSocket = ServerSocket().apply {
@@ -129,6 +134,8 @@ class P2PGameConnection(
     fun startBluetoothHost(localPlayerName: String, localAvatar: Int, wallsCount: Int, timeLimit: Int) {
         disconnect()
         isClosingExpected = false
+        hostWallsCount = wallsCount
+        hostTimeLimit = timeLimit
         val adapter = BluetoothAdapter.getDefaultAdapter()
         if (adapter == null || !adapter.isEnabled) {
             listener.onError("البلوتوث غير مفعّل على هذا الجهاز!")
@@ -289,8 +296,8 @@ class P2PGameConnection(
                         isHost = true,
                         opponentName = oppName,
                         opponentAvatar = oppAvatar,
-                        wallsCount = 10,
-                        timeLimit = 300
+                        wallsCount = hostWallsCount,
+                        timeLimit = hostTimeLimit
                     )
                 }
             }

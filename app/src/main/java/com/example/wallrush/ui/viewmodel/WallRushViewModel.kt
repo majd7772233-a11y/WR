@@ -114,6 +114,11 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     private val _selectedPawn = MutableStateFlow<PlayerId?>(null)
     val selectedPawn: StateFlow<PlayerId?> = _selectedPawn.asStateFlow()
 
+    private val _localPlayerId = MutableStateFlow(PlayerId.PLAYER_1)
+    val localPlayerId: StateFlow<PlayerId> = _localPlayerId.asStateFlow()
+
+    private var countdownJob: Job? = null
+
     private val _isWallMode = MutableStateFlow(false)
     val isWallMode: StateFlow<Boolean> = _isWallMode.asStateFlow()
 
@@ -434,6 +439,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun cancelP2PConnection() {
+        countdownJob?.cancel()
+        timerJob?.cancel()
         p2pConnection?.disconnect()
         p2pConnection = null
         isP2PActiveMatch = false
@@ -477,14 +484,21 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             player2IsAI = false
         )
 
+        val myId = if (isHost) PlayerId.PLAYER_1 else PlayerId.PLAYER_2
+        _localPlayerId.value = myId
         _gameState.value = initial
-        _selectedPawn.value = PlayerId.PLAYER_1
+        _selectedPawn.value = myId
         _isWallMode.value = false
         _previewWall.value = null
         matchStartTime = System.currentTimeMillis()
 
         navigateTo(ScreenState.MATCH)
-        startTimerLoop()
+
+        if (initial.status == GameStatus.COUNTDOWN) {
+            startCountdownFlow()
+        } else {
+            startTimerLoop()
+        }
     }
 
     override fun onMoveReceived(targetX: Int, targetY: Int) {
@@ -597,6 +611,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         )
 
         _gameState.value = initial
+        _localPlayerId.value = PlayerId.PLAYER_1
         _selectedPawn.value = PlayerId.PLAYER_1
         _isWallMode.value = false
         _previewWall.value = null
@@ -612,7 +627,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun startCountdownFlow() {
-        viewModelScope.launch {
+        countdownJob?.cancel()
+        countdownJob = viewModelScope.launch {
             for (sec in 3 downTo 1) {
                 _gameState.value = _gameState.value?.copy(countdownSeconds = sec)
                 soundManager.playCountdownBeep(isGo = false)
@@ -894,6 +910,33 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         val current = _gameState.value ?: return
         if (isP2PActiveMatch) {
             p2pConnection?.sendRematch()
+            val p1Name = if (isP2PHost) _userProfile.value.username else current.player1.name
+            val p1Avatar = if (isP2PHost) _userProfile.value.avatarId else current.player1.avatarId
+            val p2Name = if (isP2PHost) current.player2.name else _userProfile.value.username
+            val p2Avatar = if (isP2PHost) current.player2.avatarId else _userProfile.value.avatarId
+
+            val initial = GameEngine.createInitialState(
+                rules = current.rules,
+                player1Name = p1Name,
+                player2Name = p2Name,
+                player1Avatar = p1Avatar,
+                player2Avatar = p2Avatar,
+                player2IsAI = false
+            )
+            _gameState.value = initial
+            val myId = if (isP2PHost) PlayerId.PLAYER_1 else PlayerId.PLAYER_2
+            _localPlayerId.value = myId
+            _selectedPawn.value = myId
+            _isWallMode.value = false
+            _previewWall.value = null
+            matchStartTime = System.currentTimeMillis()
+            navigateTo(ScreenState.MATCH)
+            if (initial.status == GameStatus.COUNTDOWN) {
+                startCountdownFlow()
+            } else {
+                startTimerLoop()
+            }
+            return
         }
         startMatch(current.rules, current.player2.name, current.player2.avatarId, current.player2.isAI)
     }
