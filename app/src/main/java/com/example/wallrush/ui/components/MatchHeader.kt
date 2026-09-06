@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
@@ -38,8 +39,12 @@ fun PlayerHeaderCard(
     isLocalUser: Boolean = false,
     theme: GameTheme = GameTheme.MainCyberNeon
 ) {
-    val isP1 = player.id == PlayerId.PLAYER_1
-    val accentColor = if (isP1) theme.p1Primary else theme.p2Primary
+    val accentColor = when (player.id) {
+        PlayerId.PLAYER_1 -> theme.p1Primary
+        PlayerId.PLAYER_2 -> theme.p2Primary
+        PlayerId.PLAYER_3 -> Player3Primary
+        PlayerId.PLAYER_4 -> Player4Primary
+    }
     val containerColor = if (isCurrentTurn) SurfaceCardLight else SurfaceCard
 
     val infiniteTransition = rememberInfiniteTransition(label = "turnBorder")
@@ -58,62 +63,65 @@ fun PlayerHeaderCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .border(2.dp, borderColor, RoundedCornerShape(16.dp)),
+            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp)),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Left: Avatar + Name + Turn badge
+            // Left: Avatar + Name + Turn badge + Walls
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f, fill = false)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(34.dp)
                         .clip(CircleShape)
                         .background(accentColor.copy(alpha = 0.2f))
-                        .border(2.dp, accentColor, CircleShape),
+                        .border(1.5.dp, accentColor, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (player.isAI) Icons.Default.SmartToy else Icons.Default.Person,
+                        imageVector = Icons.Default.Person,
                         contentDescription = player.name,
                         tint = accentColor,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
                             text = player.name,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = TextPrimary
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (isCurrentTurn) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(accentColor)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .padding(horizontal = 5.dp, vertical = 1.dp)
                             ) {
                                 Text(
                                     text = if (isLocalUser) Strings.get("your_turn", language) else Strings.get("opponents_turn", language),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Black,
                                     color = Color.Black,
-                                    fontSize = 9.sp
+                                    fontSize = 8.5.sp
                                 )
                             }
                         }
@@ -122,15 +130,15 @@ fun PlayerHeaderCard(
                     // Wall count indicator
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = "🧱",
-                            fontSize = 13.sp
+                            fontSize = 11.sp
                         )
                         Text(
                             text = "${player.remainingWalls} ${Strings.get("walls_remaining", language)}",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary,
                             fontWeight = FontWeight.Medium
                         )
@@ -152,28 +160,28 @@ fun PlayerHeaderCard(
                 )
 
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = if (isUrgent) DangerRed.copy(alpha = 0.2f) else DeepSlateBackground,
                     modifier = Modifier.border(
                         1.dp,
                         if (isUrgent) DangerRed else CellBorder,
-                        RoundedCornerShape(10.dp)
+                        RoundedCornerShape(8.dp)
                     )
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.HourglassBottom,
                             contentDescription = "Timer",
                             tint = timerColor,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = timeString,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = timerColor
                         )
@@ -183,3 +191,73 @@ fun PlayerHeaderCard(
         }
     }
 }
+
+@Composable
+fun QuadPlayerStrip(
+    state: com.example.wallrush.domain.model.GameState,
+    language: AppLanguage,
+    theme: GameTheme = GameTheme.MainCyberNeon,
+    modifier: Modifier = Modifier
+) {
+    val players = listOfNotNull(state.player1, state.player2, state.player3, state.player4)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        players.forEach { p ->
+            val isCurrent = (state.currentTurn == p.id)
+            val pColor = when (p.id) {
+                PlayerId.PLAYER_1 -> theme.p1Primary
+                PlayerId.PLAYER_2 -> theme.p2Primary
+                PlayerId.PLAYER_3 -> Player3Primary
+                PlayerId.PLAYER_4 -> Player4Primary
+            }
+
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .border(
+                        width = if (isCurrent) 1.8.dp else 1.dp,
+                        color = if (isCurrent) pColor else CellBorder.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(10.dp)
+                    ),
+                shape = RoundedCornerShape(10.dp),
+                color = if (isCurrent) pColor.copy(alpha = 0.15f) else SurfaceCard
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(pColor)
+                    )
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text(
+                            text = p.name,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isCurrent) pColor else TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontSize = 10.sp
+                        )
+                        Text(
+                            text = "🧱 ${p.remainingWalls}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+

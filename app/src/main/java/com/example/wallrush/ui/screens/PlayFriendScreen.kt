@@ -2,6 +2,7 @@ package com.example.wallrush.ui.screens
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
+import com.example.wallrush.domain.model.GameMode
 import com.example.wallrush.data.network.NetworkHelper
 import com.example.wallrush.ui.localization.Strings
 import com.example.wallrush.ui.viewmodel.P2PConnectionStatus
@@ -55,6 +57,8 @@ fun PlayFriendScreen(
 
     var selectedTab by remember { mutableStateOf(P2PMethodTab.WIFI_HOTSPOT) }
     var inputHostIp by remember { mutableStateOf(localIp) }
+    var selectedWifiMode by remember { mutableStateOf(GameMode.FRIEND_ROOM) }
+    var selectedBtMode by remember { mutableStateOf(GameMode.FRIEND_ROOM) }
     var selectedWalls by remember { mutableStateOf(10) }
     var selectedTime by remember { mutableStateOf(300) }
 
@@ -317,29 +321,49 @@ fun PlayFriendScreen(
                                 }
                             }
 
-                            // Match configuration: Walls & Time
+                            // Match configuration: Mode, Walls & Time
                             if (p2pStatus != P2PConnectionStatus.LISTENING_WIFI) {
+                                Text(
+                                    text = Strings.get("select_game_mode", language),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextSecondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf(
+                                        Triple(GameMode.FRIEND_ROOM, Strings.get("classic_mode_short", language), "⚔️"),
+                                        Triple(GameMode.RACE_MODE, Strings.get("race_mode_short", language), "🏁"),
+                                        Triple(GameMode.QUAD_MODE, Strings.get("quad_mode_short", language), "🎯")
+                                    ).forEach { (mode, label, icon) ->
+                                        FilterChip(
+                                            selected = selectedWifiMode == mode,
+                                            onClick = { selectedWifiMode = mode },
+                                            label = { Text("$icon $label", fontSize = 11.sp, maxLines = 1) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    FilterChip(
-                                        selected = selectedWalls == 10,
-                                        onClick = { selectedWalls = 10 },
-                                        label = { Text("10 " + Strings.get("walls_remaining", language)) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    FilterChip(
-                                        selected = selectedWalls == 15,
-                                        onClick = { selectedWalls = 15 },
-                                        label = { Text("15 " + Strings.get("walls_remaining", language)) },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    listOf(5, 10, 15).forEach { walls ->
+                                        FilterChip(
+                                            selected = selectedWalls == walls,
+                                            onClick = { selectedWalls = walls },
+                                            label = { Text("$walls 🧱", maxLines = 1) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
 
                                 Button(
                                     onClick = {
-                                        viewModel.startP2PHostWifi(selectedWalls, selectedTime)
+                                        viewModel.startP2PHostWifi(selectedWalls, selectedTime, selectedWifiMode)
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = Player1Primary),
@@ -524,9 +548,65 @@ fun PlayFriendScreen(
                             }
 
                             if (p2pStatus != P2PConnectionStatus.LISTENING_BT) {
+                                Text(
+                                    text = Strings.get("select_game_mode", language),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextSecondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(
+                                        Triple(GameMode.FRIEND_ROOM, Strings.get("classic_mode_short", language), "⚔️"),
+                                        Triple(GameMode.RACE_MODE, Strings.get("race_mode_short", language), "🏁")
+                                    ).forEach { (mode, label, icon) ->
+                                        FilterChip(
+                                            selected = selectedBtMode == mode,
+                                            onClick = { selectedBtMode = mode },
+                                            label = { Text("$icon $label", fontSize = 12.sp) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = DeepSlateBackground
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Info, contentDescription = null, tint = Player1Primary, modifier = Modifier.size(14.dp))
+                                        Text(
+                                            text = Strings.get("bt_supports_2p_only", language),
+                                            color = TextSecondary,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    listOf(10, 15).forEach { walls ->
+                                        FilterChip(
+                                            selected = selectedWalls == walls,
+                                            onClick = { selectedWalls = walls },
+                                            label = { Text("$walls " + Strings.get("walls_remaining", language)) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+
                                 Button(
                                     onClick = {
-                                        viewModel.startP2PHostBluetooth(selectedWalls, selectedTime)
+                                        viewModel.startP2PHostBluetooth(selectedWalls, selectedTime, selectedBtMode)
                                     },
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = Player1Primary),
@@ -567,15 +647,51 @@ fun PlayFriendScreen(
                     }
                 }
 
-                // Section 2: Paired Bluetooth Devices
+                // Section 2: Paired Bluetooth Devices (Filtered for phones & tablets)
                 item {
                     val adapter = remember { BluetoothAdapter.getDefaultAdapter() }
+                    var filterPhonesOnly by remember { mutableStateOf(true) }
+
                     @SuppressLint("MissingPermission")
-                    val pairedDevices: List<BluetoothDevice> = remember(adapter) {
+                    val allPairedDevices: List<BluetoothDevice> = remember(adapter) {
                         try {
                             adapter?.bondedDevices?.toList() ?: emptyList()
                         } catch (e: Exception) {
                             emptyList()
+                        }
+                    }
+
+                    // Smart filter: identifies phones and tablets, hides headsets, watches, speakers
+                    val displayedDevices = remember(allPairedDevices, filterPhonesOnly) {
+                        if (!filterPhonesOnly) {
+                            allPairedDevices
+                        } else {
+                            allPairedDevices.filter { device ->
+                                val btClass = try { device.bluetoothClass } catch (e: Exception) { null }
+                                val major = btClass?.majorDeviceClass
+                                if (major != null) {
+                                    if (major == BluetoothClass.Device.Major.AUDIO_VIDEO ||
+                                        major == BluetoothClass.Device.Major.WEARABLE ||
+                                        major == BluetoothClass.Device.Major.PERIPHERAL ||
+                                        major == BluetoothClass.Device.Major.IMAGING ||
+                                        major == BluetoothClass.Device.Major.HEALTH ||
+                                        major == BluetoothClass.Device.Major.TOY
+                                    ) {
+                                        return@filter false
+                                    }
+                                    if (major == BluetoothClass.Device.Major.PHONE || major == BluetoothClass.Device.Major.COMPUTER) {
+                                        return@filter true
+                                    }
+                                }
+                                val name = try { device.name?.lowercase() ?: "" } catch (e: Exception) { "" }
+                                val excludedKeywords = listOf(
+                                    "buds", "airpod", "headset", "headphone", "earphone", "earbud",
+                                    "speaker", "soundbar", "soundcore", "jbl", "sony wh", "sony wf",
+                                    "tws", "watch", "band", "fitbit", "galaxy watch", "audio", "mic",
+                                    "dongle", "keyboard", "mouse", "controller", "gamepad", "tv", "printer"
+                                )
+                                excludedKeywords.none { name.contains(it) }
+                            }
                         }
                     }
 
@@ -593,26 +709,68 @@ fun PlayFriendScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Icon(Icons.Default.BluetoothConnected, contentDescription = "Paired", tint = Player2Primary)
-                                Text(
-                                    text = Strings.get("p2p_bt_paired", language),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.BluetoothConnected, contentDescription = "Paired", tint = Player2Primary)
+                                    Text(
+                                        text = Strings.get("p2p_bt_paired", language),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                }
+
+                                // Toggle Filter Chip
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { filterPhonesOnly = !filterPhonesOnly },
+                                    color = if (filterPhonesOnly) Player1Primary.copy(alpha = 0.2f) else DeepSlateBackground,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (filterPhonesOnly) Player1Primary else CellBorder
+                                    )
+                                ) {
+                                    Text(
+                                        text = if (filterPhonesOnly) "📱 " + Strings.get("p2p_bt_phones_only", language) else "🔍 " + Strings.get("p2p_bt_all_devices", language),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (filterPhonesOnly) Player1Primary else TextSecondary
+                                    )
+                                }
                             }
 
-                            if (pairedDevices.isEmpty()) {
+                            if (allPairedDevices.isEmpty()) {
                                 Text(
                                     text = Strings.get("p2p_bt_no_devices", language),
                                     color = TextSecondary,
                                     fontSize = 12.sp
                                 )
+                            } else if (displayedDevices.isEmpty() && filterPhonesOnly) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = Strings.get("p2p_bt_no_phones", language),
+                                        color = TextSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                    Text(
+                                        text = "👉 " + Strings.get("p2p_bt_all_devices", language),
+                                        color = Player1Primary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { filterPhonesOnly = false }
+                                    )
+                                }
                             } else {
-                                pairedDevices.forEach { device ->
+                                displayedDevices.forEach { device ->
                                     @SuppressLint("MissingPermission")
                                     val devName = try { device.name ?: "Unknown Device" } catch (e: Exception) { "Device" }
                                     Surface(
@@ -634,11 +792,41 @@ fun PlayFriendScreen(
                                         ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = Player2Primary)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Player2Primary.copy(alpha = 0.15f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Smartphone,
+                                                        contentDescription = null,
+                                                        tint = Player2Primary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
                                                 Column {
-                                                    Text(text = devName, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(text = devName, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = Player2Primary.copy(alpha = 0.15f)
+                                                        ) {
+                                                            Text(
+                                                                text = "PHONE",
+                                                                color = Player2Primary,
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Black,
+                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                            )
+                                                        }
+                                                    }
                                                     Text(text = device.address, color = TextSecondary, fontSize = 11.sp)
                                                 }
                                             }

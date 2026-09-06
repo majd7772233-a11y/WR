@@ -9,19 +9,36 @@ object GameEngine {
         rules: GameRules,
         player1Name: String = "Player 1",
         player2Name: String = "Player 2",
+        player3Name: String = "Player 3",
+        player4Name: String = "Player 4",
         player1Avatar: Int = 0,
         player2Avatar: Int = 1,
+        player3Avatar: Int = 2,
+        player4Avatar: Int = 3,
         player2IsAI: Boolean = (rules.mode == GameMode.VS_AI),
+        player3IsAI: Boolean = (rules.mode == GameMode.VS_AI || rules.mode == GameMode.QUAD_MODE),
+        player4IsAI: Boolean = (rules.mode == GameMode.VS_AI || rules.mode == GameMode.QUAD_MODE),
         roomCode: String = generateRoomCode()
     ): GameState {
         val initialTime = if (rules.timeLimitSeconds > 0) rules.timeLimitSeconds * 1000L else Long.MAX_VALUE
+        val wallsCount = if (rules.mode == GameMode.QUAD_MODE) 5 else rules.wallsPerPlayer
+
+        val p1Start = when (rules.mode) {
+            GameMode.RACE_MODE -> Position(3, 8)
+            else -> Position(4, 8)
+        }
+
+        val p2Start = when (rules.mode) {
+            GameMode.RACE_MODE -> Position(5, 8)
+            else -> Position(4, 0)
+        }
 
         val p1 = PlayerState(
             id = PlayerId.PLAYER_1,
             name = player1Name,
             avatarId = player1Avatar,
-            position = Position(4, 8), // Bottom row center
-            remainingWalls = rules.wallsPerPlayer,
+            position = p1Start,
+            remainingWalls = wallsCount,
             timeRemainingMillis = initialTime,
             isAI = false,
             isHost = true,
@@ -32,20 +49,50 @@ object GameEngine {
             id = PlayerId.PLAYER_2,
             name = player2Name,
             avatarId = player2Avatar,
-            position = Position(4, 0), // Top row center
-            remainingWalls = rules.wallsPerPlayer,
+            position = p2Start,
+            remainingWalls = wallsCount,
             timeRemainingMillis = initialTime,
             isAI = player2IsAI,
             isHost = false,
             isConnected = true
         )
 
+        val p3 = if (rules.mode == GameMode.QUAD_MODE) {
+            PlayerState(
+                id = PlayerId.PLAYER_3,
+                name = player3Name,
+                avatarId = player3Avatar,
+                position = Position(0, 4), // Left side center
+                remainingWalls = wallsCount,
+                timeRemainingMillis = initialTime,
+                isAI = player3IsAI,
+                isHost = false,
+                isConnected = true
+            )
+        } else null
+
+        val p4 = if (rules.mode == GameMode.QUAD_MODE) {
+            PlayerState(
+                id = PlayerId.PLAYER_4,
+                name = player4Name,
+                avatarId = player4Avatar,
+                position = Position(8, 4), // Right side center
+                remainingWalls = wallsCount,
+                timeRemainingMillis = initialTime,
+                isAI = player4IsAI,
+                isHost = false,
+                isConnected = true
+            )
+        } else null
+
         return GameState(
             matchId = UUID.randomUUID().toString(),
             roomCode = roomCode,
-            rules = rules,
+            rules = rules.copy(wallsPerPlayer = wallsCount),
             player1 = p1,
             player2 = p2,
+            player3 = p3,
+            player4 = p4,
             walls = emptyList(),
             currentTurn = PlayerId.PLAYER_1,
             status = if (rules.mode == GameMode.QUICK_MATCH || rules.mode == GameMode.PUBLIC_ROOM || rules.mode == GameMode.FRIEND_ROOM) {
@@ -60,6 +107,19 @@ object GameEngine {
             countdownSeconds = if (rules.mode == GameMode.QUICK_MATCH || rules.mode == GameMode.PUBLIC_ROOM || rules.mode == GameMode.FRIEND_ROOM) 3 else 0,
             lastActionTimestamp = System.currentTimeMillis()
         )
+    }
+
+    fun getNextTurn(state: GameState, currentTurn: PlayerId): PlayerId {
+        return if (state.rules.mode == GameMode.QUAD_MODE) {
+            when (currentTurn) {
+                PlayerId.PLAYER_1 -> PlayerId.PLAYER_2
+                PlayerId.PLAYER_2 -> PlayerId.PLAYER_3
+                PlayerId.PLAYER_3 -> PlayerId.PLAYER_4
+                PlayerId.PLAYER_4 -> PlayerId.PLAYER_1
+            }
+        } else {
+            if (currentTurn == PlayerId.PLAYER_1) PlayerId.PLAYER_2 else PlayerId.PLAYER_1
+        }
     }
 
     fun makeMove(state: GameState, target: Position, playerId: PlayerId = state.currentTurn): GameState {
@@ -82,10 +142,14 @@ object GameEngine {
 
         val newP1 = if (playerId == PlayerId.PLAYER_1) updatedPlayer else state.player1
         val newP2 = if (playerId == PlayerId.PLAYER_2) updatedPlayer else state.player2
+        val newP3 = if (playerId == PlayerId.PLAYER_3) updatedPlayer else state.player3
+        val newP4 = if (playerId == PlayerId.PLAYER_4) updatedPlayer else state.player4
 
-        var nextState = state.copy(
+        val nextState = state.copy(
             player1 = newP1,
             player2 = newP2,
+            player3 = newP3,
+            player4 = newP4,
             moveCount = newMoveCount,
             eventHistory = state.eventHistory + event,
             lastActionTimestamp = System.currentTimeMillis()
@@ -102,7 +166,7 @@ object GameEngine {
         }
 
         // Switch turn
-        val nextTurn = if (playerId == PlayerId.PLAYER_1) PlayerId.PLAYER_2 else PlayerId.PLAYER_1
+        val nextTurn = getNextTurn(state, playerId)
         return nextState.copy(currentTurn = nextTurn)
     }
 
@@ -126,12 +190,16 @@ object GameEngine {
 
         val newP1 = if (playerId == PlayerId.PLAYER_1) updatedPlayer else state.player1
         val newP2 = if (playerId == PlayerId.PLAYER_2) updatedPlayer else state.player2
+        val newP3 = if (playerId == PlayerId.PLAYER_3) updatedPlayer else state.player3
+        val newP4 = if (playerId == PlayerId.PLAYER_4) updatedPlayer else state.player4
 
-        val nextTurn = if (playerId == PlayerId.PLAYER_1) PlayerId.PLAYER_2 else PlayerId.PLAYER_1
+        val nextTurn = getNextTurn(state, playerId)
 
         return state.copy(
             player1 = newP1,
             player2 = newP2,
+            player3 = newP3,
+            player4 = newP4,
             walls = state.walls + wall,
             currentTurn = nextTurn,
             moveCount = newMoveCount,
@@ -145,43 +213,48 @@ object GameEngine {
         if (state.rules.timeLimitSeconds <= 0) return state
 
         val currentTurn = state.currentTurn
-        val p1 = state.player1
-        val p2 = state.player2
+        val player = state.getPlayer(currentTurn)
+        val newTime = maxOf(0L, player.timeRemainingMillis - elapsedMillis)
 
-        var newP1Time = p1.timeRemainingMillis
-        var newP2Time = p2.timeRemainingMillis
+        val updatedPlayer = player.copy(timeRemainingMillis = newTime)
+        val newP1 = if (currentTurn == PlayerId.PLAYER_1) updatedPlayer else state.player1
+        val newP2 = if (currentTurn == PlayerId.PLAYER_2) updatedPlayer else state.player2
+        val newP3 = if (currentTurn == PlayerId.PLAYER_3) updatedPlayer else state.player3
+        val newP4 = if (currentTurn == PlayerId.PLAYER_4) updatedPlayer else state.player4
 
-        if (currentTurn == PlayerId.PLAYER_1) {
-            newP1Time = maxOf(0L, p1.timeRemainingMillis - elapsedMillis)
-            if (newP1Time <= 0L) {
-                return state.copy(
-                    player1 = p1.copy(timeRemainingMillis = 0L),
-                    status = GameStatus.FINISHED,
-                    winner = PlayerId.PLAYER_2,
-                    finishReason = FinishReason.TIMEOUT
-                )
+        if (newTime <= 0L) {
+            // Player timed out
+            val winner = when {
+                state.rules.mode == GameMode.QUAD_MODE -> getNextTurn(state, currentTurn)
+                currentTurn == PlayerId.PLAYER_1 -> PlayerId.PLAYER_2
+                else -> PlayerId.PLAYER_1
             }
-        } else {
-            newP2Time = maxOf(0L, p2.timeRemainingMillis - elapsedMillis)
-            if (newP2Time <= 0L) {
-                return state.copy(
-                    player2 = p2.copy(timeRemainingMillis = 0L),
-                    status = GameStatus.FINISHED,
-                    winner = PlayerId.PLAYER_1,
-                    finishReason = FinishReason.TIMEOUT
-                )
-            }
+            return state.copy(
+                player1 = newP1,
+                player2 = newP2,
+                player3 = newP3,
+                player4 = newP4,
+                status = GameStatus.FINISHED,
+                winner = winner,
+                finishReason = FinishReason.TIMEOUT
+            )
         }
 
         return state.copy(
-            player1 = p1.copy(timeRemainingMillis = newP1Time),
-            player2 = p2.copy(timeRemainingMillis = newP2Time)
+            player1 = newP1,
+            player2 = newP2,
+            player3 = newP3,
+            player4 = newP4
         )
     }
 
     fun resign(state: GameState, resigningPlayer: PlayerId): GameState {
         if (state.status != GameStatus.IN_PROGRESS) return state
-        val winner = if (resigningPlayer == PlayerId.PLAYER_1) PlayerId.PLAYER_2 else PlayerId.PLAYER_1
+        val winner = when {
+            state.rules.mode == GameMode.QUAD_MODE -> getNextTurn(state, resigningPlayer)
+            resigningPlayer == PlayerId.PLAYER_1 -> PlayerId.PLAYER_2
+            else -> PlayerId.PLAYER_1
+        }
         return state.copy(
             status = GameStatus.FINISHED,
             winner = winner,

@@ -11,9 +11,12 @@ object RuleEngine {
 
     val PLAYER_1_GOAL_ROW = 0
     val PLAYER_2_GOAL_ROW = 8
+    val RACE_GOAL_ROW = 0
+    val QUAD_GOAL_CELL = Position(4, 4)
 
-    fun getGoalRow(playerId: PlayerId): Int =
-        if (playerId == PlayerId.PLAYER_1) PLAYER_1_GOAL_ROW else PLAYER_2_GOAL_ROW
+    fun getGoalRow(playerId: PlayerId, mode: com.example.wallrush.domain.model.GameMode = com.example.wallrush.domain.model.GameMode.VS_AI): Int =
+        if (mode == com.example.wallrush.domain.model.GameMode.RACE_MODE) RACE_GOAL_ROW
+        else if (playerId == PlayerId.PLAYER_1) PLAYER_1_GOAL_ROW else PLAYER_2_GOAL_ROW
 
     /**
      * Calculates all legal pawn moves for the specified player in the current game state.
@@ -21,10 +24,16 @@ object RuleEngine {
      */
     fun getLegalMoves(state: GameState, playerId: PlayerId = state.currentTurn): List<Position> {
         val player = state.getPlayer(playerId)
-        val opponent = state.getPlayer(if (playerId == PlayerId.PLAYER_1) PlayerId.PLAYER_2 else PlayerId.PLAYER_1)
         val currentPos = player.position
-        val opponentPos = opponent.position
         val walls = state.walls
+
+        val otherPlayers = when {
+            state.rules.mode == com.example.wallrush.domain.model.GameMode.QUAD_MODE ->
+                listOfNotNull(state.player1, state.player2, state.player3, state.player4).filter { it.id != playerId }
+            else ->
+                listOf(state.getPlayer(if (playerId == PlayerId.PLAYER_1) PlayerId.PLAYER_2 else PlayerId.PLAYER_1))
+        }
+        val occupiedPositions = otherPlayers.map { it.position }.toSet()
 
         val legalMoves = mutableListOf<Position>()
 
@@ -49,25 +58,26 @@ object RuleEngine {
                 continue
             }
 
-            // Case A: Adjacent cell is NOT occupied by opponent -> Normal single step
-            if (targetPos != opponentPos) {
+            // Case A: Adjacent cell is NOT occupied by any opponent -> Normal single step
+            if (targetPos !in occupiedPositions) {
                 legalMoves.add(targetPos)
                 continue
             }
 
-            // Case B: Adjacent cell IS occupied by opponent -> Jump mechanics!
-            val jumpStraightX = opponentPos.x + dx
-            val jumpStraightY = opponentPos.y + dy
+            // Case B: Adjacent cell IS occupied by an opponent -> Jump mechanics!
+            val jumpStraightX = targetPos.x + dx
+            val jumpStraightY = targetPos.y + dy
             val straightJumpPos = Position(jumpStraightX, jumpStraightY)
 
             val canJumpStraight = straightJumpPos.isWithinBounds() &&
-                    !PathFinder.isPassageBlocked(opponentPos, straightJumpPos, walls)
+                    straightJumpPos !in occupiedPositions &&
+                    !PathFinder.isPassageBlocked(targetPos, straightJumpPos, walls)
 
             if (canJumpStraight) {
                 // Straight jump over opponent
                 legalMoves.add(straightJumpPos)
             } else {
-                // Straight jump is blocked by a wall or board boundary -> diagonal side-steps allowed
+                // Straight jump is blocked by a wall, board boundary, or another pawn -> diagonal side-steps allowed
                 val perpendicularDirs = if (dx == 0) {
                     // Was moving vertically, check left and right
                     listOf(Pair(-1, 0), Pair(1, 0))
@@ -77,13 +87,14 @@ object RuleEngine {
                 }
 
                 for ((pdx, pdy) in perpendicularDirs) {
-                    val sideX = opponentPos.x + pdx
-                    val sideY = opponentPos.y + pdy
+                    val sideX = targetPos.x + pdx
+                    val sideY = targetPos.y + pdy
                     val sidePos = Position(sideX, sideY)
 
                     if (sidePos.isWithinBounds() &&
                         sidePos != currentPos &&
-                        !PathFinder.isPassageBlocked(opponentPos, sidePos, walls)
+                        sidePos !in occupiedPositions &&
+                        !PathFinder.isPassageBlocked(targetPos, sidePos, walls)
                     ) {
                         legalMoves.add(sidePos)
                     }
@@ -133,22 +144,35 @@ object RuleEngine {
             }
         }
 
-        // 4. Path availability check: BFS for both players
+        // 4. Path availability check: BFS for players
         val testWalls = currentWalls + proposedWall
 
-        val p1HasPath = PathFinder.hasPathToGoal(
-            start = state.player1.position,
-            targetGoalRow = PLAYER_1_GOAL_ROW,
-            walls = testWalls
-        )
-        if (!p1HasPath) return false
+        if (state.rules.mode == com.example.wallrush.domain.model.GameMode.QUAD_MODE) {
+            val center = QUAD_GOAL_CELL
+            val p1Ok = PathFinder.hasPathToCell(state.player1.position, center, testWalls)
+            val p2Ok = PathFinder.hasPathToCell(state.player2.position, center, testWalls)
+            val p3Ok = state.player3?.let { PathFinder.hasPathToCell(it.position, center, testWalls) } ?: true
+            val p4Ok = state.player4?.let { PathFinder.hasPathToCell(it.position, center, testWalls) } ?: true
+            if (!p1Ok || !p2Ok || !p3Ok || !p4Ok) return false
+        } else if (state.rules.mode == com.example.wallrush.domain.model.GameMode.RACE_MODE) {
+            val p1Ok = PathFinder.hasPathToGoal(state.player1.position, RACE_GOAL_ROW, testWalls)
+            val p2Ok = PathFinder.hasPathToGoal(state.player2.position, RACE_GOAL_ROW, testWalls)
+            if (!p1Ok || !p2Ok) return false
+        } else {
+            val p1HasPath = PathFinder.hasPathToGoal(
+                start = state.player1.position,
+                targetGoalRow = PLAYER_1_GOAL_ROW,
+                walls = testWalls
+            )
+            if (!p1HasPath) return false
 
-        val p2HasPath = PathFinder.hasPathToGoal(
-            start = state.player2.position,
-            targetGoalRow = PLAYER_2_GOAL_ROW,
-            walls = testWalls
-        )
-        if (!p2HasPath) return false
+            val p2HasPath = PathFinder.hasPathToGoal(
+                start = state.player2.position,
+                targetGoalRow = PLAYER_2_GOAL_ROW,
+                walls = testWalls
+            )
+            if (!p2HasPath) return false
+        }
 
         return true
     }
@@ -190,11 +214,24 @@ object RuleEngine {
     }
 
     /**
-     * Checks if a player has reached their winning goal row.
+     * Checks if a player has reached their winning goal row or center cell.
      */
     fun checkWinner(state: GameState): PlayerId? {
-        if (state.player1.position.y == PLAYER_1_GOAL_ROW) return PlayerId.PLAYER_1
-        if (state.player2.position.y == PLAYER_2_GOAL_ROW) return PlayerId.PLAYER_2
-        return null
+        if (state.rules.mode == com.example.wallrush.domain.model.GameMode.QUAD_MODE) {
+            val center = QUAD_GOAL_CELL
+            if (state.player1.position == center) return PlayerId.PLAYER_1
+            if (state.player2.position == center) return PlayerId.PLAYER_2
+            state.player3?.let { if (it.position == center) return PlayerId.PLAYER_3 }
+            state.player4?.let { if (it.position == center) return PlayerId.PLAYER_4 }
+            return null
+        } else if (state.rules.mode == com.example.wallrush.domain.model.GameMode.RACE_MODE) {
+            if (state.player1.position.y == RACE_GOAL_ROW) return PlayerId.PLAYER_1
+            if (state.player2.position.y == RACE_GOAL_ROW) return PlayerId.PLAYER_2
+            return null
+        } else {
+            if (state.player1.position.y == PLAYER_1_GOAL_ROW) return PlayerId.PLAYER_1
+            if (state.player2.position.y == PLAYER_2_GOAL_ROW) return PlayerId.PLAYER_2
+            return null
+        }
     }
 }

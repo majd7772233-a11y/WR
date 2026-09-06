@@ -7,7 +7,9 @@ import java.util.UUID
 @Keep
 enum class PlayerId {
     PLAYER_1,
-    PLAYER_2
+    PLAYER_2,
+    PLAYER_3,
+    PLAYER_4
 }
 
 @Keep
@@ -43,7 +45,9 @@ enum class GameMode {
     VS_AI,
     QUICK_MATCH,
     PUBLIC_ROOM,
-    FRIEND_ROOM
+    FRIEND_ROOM,
+    RACE_MODE,
+    QUAD_MODE
 }
 
 @Keep
@@ -129,6 +133,8 @@ data class GameState(
     val rules: GameRules = GameRules(),
     val player1: PlayerState,
     val player2: PlayerState,
+    val player3: PlayerState? = null,
+    val player4: PlayerState? = null,
     val walls: List<Wall> = emptyList(),
     val currentTurn: PlayerId = PlayerId.PLAYER_1,
     val status: GameStatus = GameStatus.IN_PROGRESS,
@@ -139,7 +145,21 @@ data class GameState(
     val countdownSeconds: Int = 0,
     val lastActionTimestamp: Long = System.currentTimeMillis()
 ) {
-    fun getCurrentPlayer(): PlayerState = if (currentTurn == PlayerId.PLAYER_1) player1 else player2
+    fun isQuadMode(): Boolean = rules.mode == GameMode.QUAD_MODE
+    fun isRaceMode(): Boolean = rules.mode == GameMode.RACE_MODE
+
+    fun getAllPlayers(): List<PlayerState> = if (isQuadMode() && player3 != null && player4 != null) {
+        listOf(player1, player2, player3, player4)
+    } else {
+        listOf(player1, player2)
+    }
+
+    fun getCurrentPlayer(): PlayerState = getPlayer(currentTurn)
     fun getOpponentPlayer(): PlayerState = if (currentTurn == PlayerId.PLAYER_1) player2 else player1
-    fun getPlayer(id: PlayerId): PlayerState = if (id == PlayerId.PLAYER_1) player1 else player2
+    fun getPlayer(id: PlayerId): PlayerState = when (id) {
+        PlayerId.PLAYER_1 -> player1
+        PlayerId.PLAYER_2 -> player2
+        PlayerId.PLAYER_3 -> player3 ?: player1
+        PlayerId.PLAYER_4 -> player4 ?: player2
+    }
 }

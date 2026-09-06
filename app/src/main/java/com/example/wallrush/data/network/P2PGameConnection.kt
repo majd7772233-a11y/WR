@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import kotlinx.coroutines.*
+import com.example.wallrush.domain.model.GameMode
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
@@ -28,7 +29,14 @@ sealed class P2PConnectionType {
 }
 
 interface P2PGameListener {
-    fun onConnected(isHost: Boolean, opponentName: String, opponentAvatar: Int, wallsCount: Int, timeLimit: Int)
+    fun onConnected(
+        isHost: Boolean,
+        opponentName: String,
+        opponentAvatar: Int,
+        wallsCount: Int,
+        timeLimit: Int,
+        mode: GameMode = GameMode.FRIEND_ROOM
+    )
     fun onMoveReceived(targetX: Int, targetY: Int)
     fun onWallReceived(x: Int, y: Int, isHorizontal: Boolean)
     fun onEmoteReceived(emoji: String)
@@ -62,6 +70,7 @@ class P2PGameConnection(
 
     private var hostWallsCount: Int = 10
     private var hostTimeLimit: Int = 300
+    private var hostGameMode: GameMode = GameMode.FRIEND_ROOM
 
     private var heartbeatJob: Job? = null
     private var readJob: Job? = null
@@ -69,11 +78,19 @@ class P2PGameConnection(
     /**
      * Starts listening as a Wi-Fi / Hotspot TCP host.
      */
-    fun startWifiHost(localPlayerName: String, localAvatar: Int, wallsCount: Int, timeLimit: Int, port: Int = 8888) {
+    fun startWifiHost(
+        localPlayerName: String,
+        localAvatar: Int,
+        wallsCount: Int,
+        timeLimit: Int,
+        mode: GameMode = GameMode.FRIEND_ROOM,
+        port: Int = 8888
+    ) {
         disconnect()
         isClosingExpected = false
         hostWallsCount = wallsCount
         hostTimeLimit = timeLimit
+        hostGameMode = mode
         scope.launch {
             try {
                 serverSocket = ServerSocket().apply {
@@ -87,7 +104,8 @@ class P2PGameConnection(
                     localName = localPlayerName,
                     localAvatar = localAvatar,
                     wallsCount = wallsCount,
-                    timeLimit = timeLimit
+                    timeLimit = timeLimit,
+                    mode = mode
                 )
             } catch (e: Exception) {
                 if (!isClosingExpected) {
@@ -115,7 +133,8 @@ class P2PGameConnection(
                     localName = localPlayerName,
                     localAvatar = localAvatar,
                     wallsCount = 10,
-                    timeLimit = 300
+                    timeLimit = 300,
+                    mode = GameMode.FRIEND_ROOM
                 )
             } catch (e: Exception) {
                 if (!isClosingExpected) {
@@ -131,11 +150,18 @@ class P2PGameConnection(
      * Starts listening as a Bluetooth Host.
      */
     @SuppressLint("MissingPermission")
-    fun startBluetoothHost(localPlayerName: String, localAvatar: Int, wallsCount: Int, timeLimit: Int) {
+    fun startBluetoothHost(
+        localPlayerName: String,
+        localAvatar: Int,
+        wallsCount: Int,
+        timeLimit: Int,
+        mode: GameMode = GameMode.FRIEND_ROOM
+    ) {
         disconnect()
         isClosingExpected = false
         hostWallsCount = wallsCount
         hostTimeLimit = timeLimit
+        hostGameMode = mode
         val adapter = BluetoothAdapter.getDefaultAdapter()
         if (adapter == null || !adapter.isEnabled) {
             listener.onError("البلوتوث غير مفعّل على هذا الجهاز!")
@@ -155,7 +181,8 @@ class P2PGameConnection(
                     localName = localPlayerName,
                     localAvatar = localAvatar,
                     wallsCount = wallsCount,
-                    timeLimit = timeLimit
+                    timeLimit = timeLimit,
+                    mode = mode
                 )
             } catch (e: Exception) {
                 if (!isClosingExpected) {
@@ -210,7 +237,8 @@ class P2PGameConnection(
         localName: String,
         localAvatar: Int,
         wallsCount: Int,
-        timeLimit: Int
+        timeLimit: Int,
+        mode: GameMode = GameMode.FRIEND_ROOM
     ) {
         try {
             val inStream = tcpSocket?.getInputStream() ?: btSocket?.inputStream
@@ -225,8 +253,8 @@ class P2PGameConnection(
 
             // Handshake flow
             if (isHost) {
-                // Host sends match rules & identity
-                sendMessageDirect("HANDSHAKE:$localName:$localAvatar:$wallsCount:$timeLimit")
+                // Host sends match rules & identity & mode
+                sendMessageDirect("HANDSHAKE:$localName:$localAvatar:$wallsCount:$timeLimit:${mode.name}")
             }
 
             // Start listening loop
@@ -272,6 +300,8 @@ class P2PGameConnection(
                 val oppAvatar = parts.getOrNull(2)?.toIntOrNull() ?: 0
                 val walls = parts.getOrNull(3)?.toIntOrNull() ?: 10
                 val time = parts.getOrNull(4)?.toIntOrNull() ?: 300
+                val modeStr = parts.getOrNull(5) ?: GameMode.FRIEND_ROOM.name
+                val mode = try { GameMode.valueOf(modeStr) } catch (_: Exception) { GameMode.FRIEND_ROOM }
 
                 // Client acknowledges with identity
                 sendMessageDirect("HANDSHAKE_ACK:$localName:$localAvatar")
@@ -282,7 +312,8 @@ class P2PGameConnection(
                         opponentName = oppName,
                         opponentAvatar = oppAvatar,
                         wallsCount = walls,
-                        timeLimit = time
+                        timeLimit = time,
+                        mode = mode
                     )
                 }
             }
@@ -297,7 +328,8 @@ class P2PGameConnection(
                         opponentName = oppName,
                         opponentAvatar = oppAvatar,
                         wallsCount = hostWallsCount,
-                        timeLimit = hostTimeLimit
+                        timeLimit = hostTimeLimit,
+                        mode = hostGameMode
                     )
                 }
             }

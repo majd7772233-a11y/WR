@@ -41,7 +41,26 @@ class WallRushRepository(private val database: AppDatabase) {
         database.profileDao().saveProfile(current.copy(username = username, avatarId = avatarId))
     }
 
-    suspend fun saveCompletedMatch(state: GameState, durationSeconds: Long): Long {
+    suspend fun resetStats() {
+        val current = getOrCreateProfile()
+        database.profileDao().saveProfile(
+            current.copy(
+                totalMatches = 0,
+                wins = 0,
+                losses = 0,
+                currentStreak = 0,
+                bestStreak = 0,
+                ratingScore = 1200,
+                wallsPlaced = 0
+            )
+        )
+    }
+
+    suspend fun saveCompletedMatch(
+        state: GameState,
+        durationSeconds: Long,
+        localPlayerId: PlayerId = PlayerId.PLAYER_1
+    ): Long {
         val rulesJson = rulesAdapter.toJson(state.rules)
 
         // Serialize events to simple JSON array format
@@ -65,16 +84,17 @@ class WallRushRepository(private val database: AppDatabase) {
 
         val recordId = database.matchDao().insertMatch(record)
 
-        // Update profile stats if Player 1 is the local user
+        // Update profile stats for the local user
         val profile = getOrCreateProfile()
-        val isWin = state.winner == PlayerId.PLAYER_1
+        val isWin = state.winner == localPlayerId
         val newWins = if (isWin) profile.wins + 1 else profile.wins
         val newLosses = if (!isWin && state.winner != null) profile.losses + 1 else profile.losses
         val newStreak = if (isWin) profile.currentStreak + 1 else 0
         val newBestStreak = maxOf(profile.bestStreak, newStreak)
         val ratingDelta = if (isWin) 25 else if (state.winner != null) -15 else 0
         val newRating = maxOf(800, profile.ratingScore + ratingDelta)
-        val wallsUsedByP1 = state.rules.wallsPerPlayer - state.player1.remainingWalls
+        val localPlayer = state.getPlayer(localPlayerId)
+        val wallsUsedByLocal = state.rules.wallsPerPlayer - localPlayer.remainingWalls
 
         database.profileDao().saveProfile(
             profile.copy(
@@ -83,7 +103,7 @@ class WallRushRepository(private val database: AppDatabase) {
                 totalMatches = profile.totalMatches + 1,
                 currentStreak = newStreak,
                 bestStreak = newBestStreak,
-                wallsPlaced = profile.wallsPlaced + wallsUsedByP1,
+                wallsPlaced = profile.wallsPlaced + wallsUsedByLocal,
                 ratingScore = newRating
             )
         )

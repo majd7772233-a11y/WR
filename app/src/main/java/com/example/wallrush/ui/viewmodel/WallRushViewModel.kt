@@ -18,12 +18,16 @@ import com.example.wallrush.domain.engine.GameEngine
 import com.example.wallrush.domain.engine.ReplayEngine
 import com.example.wallrush.domain.engine.RuleEngine
 import com.example.wallrush.domain.model.*
+import com.example.wallrush.domain.npc.NPCManager
+import com.example.wallrush.domain.npc.NPCPersonality
+import com.example.wallrush.domain.npc.NPCProfile
 import com.example.wallrush.ui.components.ActiveEmote
 import com.example.wallrush.ui.localization.AppLanguage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 enum class ScreenState {
     HOME,
@@ -33,7 +37,9 @@ enum class ScreenState {
     TUTORIAL,
     REPLAY,
     LEADERBOARD,
-    PROFILE
+    PROFILE,
+    SETTINGS,
+    ABOUT
 }
 
 enum class P2PConnectionStatus {
@@ -53,7 +59,16 @@ data class PublicRoomItem(
     val timeLimitSeconds: Int,
     val wallsCount: Int,
     val pingMs: Int,
+    val mode: GameMode = GameMode.PUBLIC_ROOM,
     val status: String = "Waiting"
+)
+
+data class CreatedRoomChallenge(
+    val rules: GameRules,
+    val roomCode: String,
+    val challengerNpc: NPCProfile,
+    val durationSeconds: Int = 20,
+    val remainingSeconds: Int = 20
 )
 
 data class UiSettings(
@@ -137,9 +152,21 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     private val _showSettingsDialog = MutableStateFlow(false)
     val showSettingsDialog: StateFlow<Boolean> = _showSettingsDialog.asStateFlow()
 
+    // Active NPC Opponent (for rich personality, custom names, and behavior)
+    private val _activeNPC = MutableStateFlow<NPCProfile?>(null)
+    val activeNPC: StateFlow<NPCProfile?> = _activeNPC.asStateFlow()
+
     // Public Rooms List (Dynamic live rooms that periodically refresh and change)
     private val _publicRooms = MutableStateFlow<List<PublicRoomItem>>(emptyList())
     val publicRooms: StateFlow<List<PublicRoomItem>> = _publicRooms.asStateFlow()
+
+    // Room Creation & Waiting Room Challenge State
+    private val _createdRoomChallenge = MutableStateFlow<CreatedRoomChallenge?>(null)
+    val createdRoomChallenge: StateFlow<CreatedRoomChallenge?> = _createdRoomChallenge.asStateFlow()
+
+    // Quick Match Loading Simulation State
+    private val _isQuickMatchSearching = MutableStateFlow(false)
+    val isQuickMatchSearching: StateFlow<Boolean> = _isQuickMatchSearching.asStateFlow()
 
     // Replay State
     private val _currentReplayEngine = MutableStateFlow<ReplayEngine?>(null)
@@ -197,6 +224,10 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
         _currentScreen.value = screen
         soundManager.playButton()
+    }
+
+    fun navigateBack() {
+        navigateTo(ScreenState.HOME)
     }
 
     // ==========================================
@@ -257,37 +288,190 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateUsername(newName: String) {
+        val avatar = _userProfile.value.avatarId
+        updateUsername(newName, avatar)
+    }
+
+    fun resetStatistics() {
+        viewModelScope.launch {
+            repository.resetStats()
+            val updated = repository.getOrCreateProfile()
+            _userProfile.value = updated
+        }
+    }
+
     // ==========================================
     // ONLINE PLAY & LIVE DYNAMIC ROOMS
     // ==========================================
 
-    fun onQuickMatchClicked() {
-        val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
-        if (!hasInternet) {
-            _showNoInternetDialog.value = true
-            soundManager.playInvalid()
-            return
+    fun onQuickMatchClicked(targetMode: GameMode = GameMode.QUICK_MATCH, bypassGlitch: Boolean = false) {
+        if (!bypassGlitch) {
+            val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
+            if (!hasInternet) {
+                _showNoInternetDialog.value = true
+                soundManager.playInvalid()
+                return
+            }
         }
 
-        // Live Matchmaking simulation with realistic online players
+        // Live Matchmaking simulation with varied rules & search loading animation
         viewModelScope.launch {
             soundManager.playButton()
-            val onlineOpponents = listOf(
-                "سلطان_الرياض", "فهد_التكتيكي", "عمر_المحترف", "أحمد_الجدار",
-                "GrandMaster_Z", "WallKnight_99", "Sarah_Speed", "Tariq_Pro"
-            )
-            val chosenOpponent = onlineOpponents.random()
-            val rules = GameRules(wallsPerPlayer = 10, timeLimitSeconds = 300, mode = GameMode.QUICK_MATCH)
-            startMatch(rules, player2Name = chosenOpponent, player2IsAI = true)
+            _isQuickMatchSearching.value = true
+
+            val randomWalls = if (targetMode == GameMode.QUAD_MODE) 5 else listOf(8, 10, 12, 15).random()
+            val randomTime = listOf(180, 240, 300, 420).random()
+            val rules = GameRules(wallsPerPlayer = randomWalls, timeLimitSeconds = randomTime, mode = targetMode)
+
+            val searchDelay = (1400L..2200L).random()
+            delay(searchDelay)
+
+            if (targetMode == GameMode.QUAD_MODE) {
+                val opponents = NPCManager.generateLobbyHosts(getApplication(), 3)
+                val p2 = opponents[0]
+                val p3 = opponents[1]
+                val p4 = opponents[2]
+                _isQuickMatchSearching.value = false
+                startMatch(
+                    rules = rules,
+                    player2Name = "${p2.countryFlag} ${p2.name}",
+                    player2Avatar = p2.avatarId,
+                    player2IsAI = true,
+                    player3Name = "${p3.countryFlag} ${p3.name}",
+                    player3Avatar = p3.avatarId,
+                    player3IsAI = true,
+                    player4Name = "${p4.countryFlag} ${p4.name}",
+                    player4Avatar = p4.avatarId,
+                    player4IsAI = true
+                )
+            } else {
+                val npc = NPCManager.getRandomOpponent(getApplication())
+                NPCManager.recordEncounter(getApplication(), npc.id)
+                _activeNPC.value = npc
+                _isQuickMatchSearching.value = false
+
+                startMatch(
+                    rules = rules,
+                    player2Name = "${npc.countryFlag} ${npc.name}",
+                    player2Avatar = npc.avatarId,
+                    player2IsAI = true,
+                    npcProfile = npc
+                )
+            }
         }
     }
 
-    fun onPlayOnlineClicked() {
+    fun cancelQuickMatchSearch() {
+        _isQuickMatchSearching.value = false
+    }
+
+    private var challengeTimerJob: Job? = null
+
+    fun createPublicRoomWithWaiting(rules: GameRules) {
         val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
         if (!hasInternet) {
             _showNoInternetDialog.value = true
             soundManager.playInvalid()
             return
+        }
+
+        val code = "#" + (100000..999999).random().toString(16).uppercase()
+        val opponent = NPCManager.getRandomOpponent(getApplication())
+        val challengeDuration = (12..25).random()
+
+        val challenge = CreatedRoomChallenge(
+            rules = rules,
+            roomCode = code,
+            challengerNpc = opponent,
+            durationSeconds = challengeDuration,
+            remainingSeconds = challengeDuration
+        )
+        _createdRoomChallenge.value = challenge
+        soundManager.playButton()
+
+        challengeTimerJob?.cancel()
+        challengeTimerJob = viewModelScope.launch {
+            for (sec in challengeDuration downTo 0) {
+                delay(1000)
+                val cur = _createdRoomChallenge.value ?: break
+                if (sec > 0) {
+                    _createdRoomChallenge.value = cur.copy(remainingSeconds = sec - 1)
+                } else {
+                    // Time expired - pick another opponent or close
+                    val nextOpponent = NPCManager.getRandomOpponent(getApplication())
+                    _createdRoomChallenge.value = cur.copy(
+                        challengerNpc = nextOpponent,
+                        durationSeconds = 18,
+                        remainingSeconds = 18
+                    )
+                }
+            }
+        }
+    }
+
+    fun acceptRoomChallenge() {
+        val challenge = _createdRoomChallenge.value ?: return
+        challengeTimerJob?.cancel()
+        _createdRoomChallenge.value = null
+
+        if (challenge.rules.mode == GameMode.QUAD_MODE) {
+            val opponents = NPCManager.generateLobbyHosts(getApplication(), 3)
+            val p2 = opponents[0]
+            val p3 = opponents[1]
+            val p4 = opponents[2]
+            startMatch(
+                rules = challenge.rules,
+                player2Name = "${p2.countryFlag} ${p2.name}",
+                player2Avatar = p2.avatarId,
+                player2IsAI = true,
+                player3Name = "${p3.countryFlag} ${p3.name}",
+                player3Avatar = p3.avatarId,
+                player3IsAI = true,
+                player4Name = "${p4.countryFlag} ${p4.name}",
+                player4Avatar = p4.avatarId,
+                player4IsAI = true
+            )
+        } else {
+            val npc = challenge.challengerNpc
+            NPCManager.recordEncounter(getApplication(), npc.id)
+            _activeNPC.value = npc
+
+            startMatch(
+                rules = challenge.rules,
+                player2Name = "${npc.countryFlag} ${npc.name}",
+                player2Avatar = npc.avatarId,
+                player2IsAI = true,
+                npcProfile = npc
+            )
+        }
+    }
+
+    fun rejectRoomChallenge() {
+        // Switch to a new challenger waiting
+        val current = _createdRoomChallenge.value ?: return
+        val newNpc = NPCManager.getRandomOpponent(getApplication())
+        _createdRoomChallenge.value = current.copy(
+            challengerNpc = newNpc,
+            durationSeconds = 15,
+            remainingSeconds = 15
+        )
+        soundManager.playInvalid()
+    }
+
+    fun dismissRoomWaiting() {
+        challengeTimerJob?.cancel()
+        _createdRoomChallenge.value = null
+    }
+
+    fun onPlayOnlineClicked(bypassGlitch: Boolean = false) {
+        if (!bypassGlitch) {
+            val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
+            if (!hasInternet) {
+                _showNoInternetDialog.value = true
+                soundManager.playInvalid()
+                return
+            }
         }
         generateLivePublicRooms()
         navigateTo(ScreenState.PUBLIC_ROOMS)
@@ -305,24 +489,16 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun generateLivePublicRooms() {
-        val pool = listOf(
-            Triple("سلطان_الرياض", 0, 24),
-            Triple("عمر_المحترف", 1, 38),
-            Triple("فهد_التكتيكي", 2, 45),
-            Triple("GrandMaster_KSA", 3, 29),
-            Triple("Ahmed_Apex", 0, 52),
-            Triple("CyberPawn", 1, 65),
-            Triple("TacticalSamir", 2, 33),
-            Triple("WallKnight_88", 3, 41),
-            Triple("Zaid_Champion", 0, 28),
-            Triple("Rami_Speed", 1, 74)
-        )
+        val hosts = NPCManager.generateLobbyHosts(getApplication(), 6)
+        val roomCodes = listOf("#8A7B2C", "#4F9D1E", "#3M7W8Q", "#9P2K5L", "#6Z4N1T", "#2X8C9V", "#7Y1R4E", "#5T8U2W").shuffled()
 
-        val shuffled = pool.shuffled().take(5)
-        val roomCodes = listOf("#8A7B2C", "#4F9D1E", "#3M7W8Q", "#9P2K5L", "#6Z4N1T", "#2X8C9V").shuffled()
-
-        val generated = shuffled.mapIndexed { index, item ->
-            val walls = if (index % 3 == 0) 15 else 10
+        val generated = hosts.mapIndexed { index, host ->
+            val mode = when (index % 3) {
+                1 -> GameMode.RACE_MODE
+                2 -> GameMode.QUAD_MODE
+                else -> GameMode.PUBLIC_ROOM
+            }
+            val walls = if (mode == GameMode.QUAD_MODE) 5 else if (index % 2 == 0) 10 else 15
             val time = when (index % 3) {
                 0 -> 180
                 1 -> 300
@@ -330,11 +506,12 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             }
             PublicRoomItem(
                 roomCode = roomCodes.getOrElse(index) { "#R${(1000..9999).random()}" },
-                hostName = item.first,
-                hostAvatar = item.second,
+                hostName = "${host.countryFlag} ${host.name}",
+                hostAvatar = host.avatarId,
                 timeLimitSeconds = time,
                 wallsCount = walls,
-                pingMs = item.third + (0..9).random(),
+                pingMs = (24..68).random(),
+                mode = mode,
                 status = if (index == 0) "جاهز للتحدي" else "بانتظار لاعب"
             )
         }
@@ -361,23 +538,51 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
-        startMatch(
-            rules = GameRules(
-                wallsPerPlayer = room.wallsCount,
-                timeLimitSeconds = room.timeLimitSeconds,
-                mode = GameMode.PUBLIC_ROOM
-            ),
-            player2Name = room.hostName,
-            player2Avatar = room.hostAvatar,
-            player2IsAI = true
-        )
+        if (room.mode == GameMode.QUAD_MODE) {
+            val opponents = NPCManager.generateLobbyHosts(getApplication(), 3)
+            val p2 = opponents[0]
+            val p3 = opponents[1]
+            val p4 = opponents[2]
+            startMatch(
+                rules = GameRules(
+                    wallsPerPlayer = 5,
+                    timeLimitSeconds = room.timeLimitSeconds,
+                    mode = GameMode.QUAD_MODE
+                ),
+                player2Name = "${p2.countryFlag} ${p2.name}",
+                player2Avatar = p2.avatarId,
+                player2IsAI = true,
+                player3Name = "${p3.countryFlag} ${p3.name}",
+                player3Avatar = p3.avatarId,
+                player3IsAI = true,
+                player4Name = "${p4.countryFlag} ${p4.name}",
+                player4Avatar = p4.avatarId,
+                player4IsAI = true
+            )
+        } else {
+            val npc = NPCManager.getRandomOpponent(getApplication())
+            val roomNpc = npc.copy(name = room.hostName.substringAfter(" ").ifBlank { room.hostName }, avatarId = room.hostAvatar)
+            _activeNPC.value = roomNpc
+
+            startMatch(
+                rules = GameRules(
+                    wallsPerPlayer = room.wallsCount,
+                    timeLimitSeconds = room.timeLimitSeconds,
+                    mode = room.mode
+                ),
+                player2Name = room.hostName,
+                player2Avatar = room.hostAvatar,
+                player2IsAI = true,
+                npcProfile = roomNpc
+            )
+        }
     }
 
     // ==========================================
     // REAL PEER-TO-PEER MULTIPLAYER (PLAY WITH FRIEND)
     // ==========================================
 
-    fun startP2PHostWifi(wallsCount: Int, timeLimit: Int, port: Int = 8888) {
+    fun startP2PHostWifi(wallsCount: Int, timeLimit: Int, mode: GameMode = GameMode.FRIEND_ROOM, port: Int = 8888) {
         detectLocalIp()
         _p2pStatus.value = P2PConnectionStatus.LISTENING_WIFI
         _p2pDisconnectionMessage.value = null
@@ -389,6 +594,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                 localAvatar = _userProfile.value.avatarId,
                 wallsCount = wallsCount,
                 timeLimit = timeLimit,
+                mode = mode,
                 port = port
             )
         }
@@ -409,7 +615,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun startP2PHostBluetooth(wallsCount: Int, timeLimit: Int) {
+    fun startP2PHostBluetooth(wallsCount: Int, timeLimit: Int, mode: GameMode = GameMode.FRIEND_ROOM) {
         _p2pStatus.value = P2PConnectionStatus.LISTENING_BT
         _p2pDisconnectionMessage.value = null
         p2pConnection?.disconnect()
@@ -419,7 +625,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                 localPlayerName = _userProfile.value.username,
                 localAvatar = _userProfile.value.avatarId,
                 wallsCount = wallsCount,
-                timeLimit = timeLimit
+                timeLimit = timeLimit,
+                mode = mode
             )
         }
     }
@@ -458,7 +665,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         opponentName: String,
         opponentAvatar: Int,
         wallsCount: Int,
-        timeLimit: Int
+        timeLimit: Int,
+        mode: GameMode
     ) {
         _p2pStatus.value = P2PConnectionStatus.CONNECTED
         isP2PActiveMatch = true
@@ -467,7 +675,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         val rules = GameRules(
             wallsPerPlayer = wallsCount,
             timeLimitSeconds = timeLimit,
-            mode = GameMode.FRIEND_ROOM
+            mode = mode
         )
 
         val p1Name = if (isHost) _userProfile.value.username else opponentName
@@ -553,6 +761,16 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private fun showOpponentEmote(emoji: String) {
+        val current = _gameState.value ?: return
+        _activeEmote.value = ActiveEmote(PlayerId.PLAYER_2, emoji, current.player2.name)
+        soundManager.playEmote()
+        viewModelScope.launch {
+            delay(2400)
+            _activeEmote.value = null
+        }
+    }
+
     override fun onOpponentResigned() {
         val current = _gameState.value ?: return
         val opponentId = if (isP2PHost) PlayerId.PLAYER_2 else PlayerId.PLAYER_1
@@ -596,18 +814,50 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
 
     fun startMatch(
         rules: GameRules,
-        player2Name: String = if (rules.mode == GameMode.VS_AI) "WallBot AI" else "Player 2",
-        player2Avatar: Int = if (rules.mode == GameMode.VS_AI) 99 else 1,
-        player2IsAI: Boolean = (rules.mode == GameMode.VS_AI)
+        player2Name: String? = null,
+        player2Avatar: Int? = null,
+        player2IsAI: Boolean = (rules.mode == GameMode.VS_AI || rules.mode == GameMode.QUICK_MATCH || rules.mode == GameMode.PUBLIC_ROOM || rules.mode == GameMode.QUAD_MODE),
+        player3Name: String? = null,
+        player3Avatar: Int? = null,
+        player3IsAI: Boolean? = null,
+        player4Name: String? = null,
+        player4Avatar: Int? = null,
+        player4IsAI: Boolean? = null,
+        npcProfile: NPCProfile? = null
     ) {
+        val npc = if (player2IsAI && rules.mode != GameMode.QUAD_MODE) {
+            npcProfile ?: NPCManager.getRandomOpponent(getApplication(), rules.aiDifficulty).also {
+                NPCManager.recordEncounter(getApplication(), it.id)
+            }
+        } else {
+            null
+        }
+        _activeNPC.value = npc
+
+        val finalP2Name = player2Name ?: (npc?.name ?: if (rules.mode == GameMode.PASS_AND_PLAY) "Player 2" else if (rules.mode == GameMode.QUAD_MODE) "Player 2 (Red)" else "Guest")
+        val finalP2Avatar = player2Avatar ?: (npc?.avatarId ?: 1)
+
+        val finalP3Name = player3Name ?: if (rules.mode == GameMode.QUAD_MODE) "Player 3 (Green)" else "Player 3"
+        val finalP3Avatar = player3Avatar ?: 2
+        val finalP4Name = player4Name ?: if (rules.mode == GameMode.QUAD_MODE) "Player 4 (Yellow)" else "Player 4"
+        val finalP4Avatar = player4Avatar ?: 3
+        val finalP3IsAI = player3IsAI ?: player2IsAI
+        val finalP4IsAI = player4IsAI ?: player2IsAI
+
         val p1Name = _userProfile.value.username
         val initial = GameEngine.createInitialState(
             rules = rules,
             player1Name = p1Name,
-            player2Name = player2Name,
+            player2Name = finalP2Name,
+            player3Name = finalP3Name,
+            player4Name = finalP4Name,
             player1Avatar = _userProfile.value.avatarId,
-            player2Avatar = player2Avatar,
-            player2IsAI = player2IsAI
+            player2Avatar = finalP2Avatar,
+            player3Avatar = finalP3Avatar,
+            player4Avatar = finalP4Avatar,
+            player2IsAI = player2IsAI,
+            player3IsAI = finalP3IsAI,
+            player4IsAI = finalP4IsAI
         )
 
         _gameState.value = initial
@@ -672,7 +922,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
 
         val isMyTurn = current.currentTurn == localPlayerId ||
-                (current.rules.mode == GameMode.PASS_AND_PLAY)
+                (current.rules.mode == GameMode.PASS_AND_PLAY) ||
+                !current.getCurrentPlayer().isAI
 
         if (!isMyTurn) return
 
@@ -777,7 +1028,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
 
         val isMyTurn = current.currentTurn == localPlayerId ||
-                (current.rules.mode == GameMode.PASS_AND_PLAY)
+                (current.rules.mode == GameMode.PASS_AND_PLAY) ||
+                !current.getCurrentPlayer().isAI
         if (!isMyTurn) return
 
         if (RuleEngine.isWallPlacementLegal(current, wall, current.currentTurn)) {
@@ -809,29 +1061,60 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun checkTriggerAI(state: GameState) {
-        if (state.currentTurn == PlayerId.PLAYER_2 && state.player2.isAI && state.status == GameStatus.IN_PROGRESS) {
+        val currentPlayer = state.getCurrentPlayer()
+        if (currentPlayer.isAI && state.status == GameStatus.IN_PROGRESS) {
+            val turnPlayerId = state.currentTurn
             aiJob?.cancel()
             aiJob = viewModelScope.launch {
-                delay(650)
+                val npc = _activeNPC.value
+                val delayMs = if (npc != null && state.rules.mode != GameMode.QUAD_MODE) {
+                    Random.nextLong(npc.minThinkingDelayMs, npc.maxThinkingDelayMs + 1)
+                } else {
+                    550L
+                }
+                delay(delayMs)
                 val current = _gameState.value ?: return@launch
-                if (current.currentTurn != PlayerId.PLAYER_2 || current.status != GameStatus.IN_PROGRESS) return@launch
+                if (current.currentTurn != turnPlayerId || current.status != GameStatus.IN_PROGRESS) return@launch
 
-                val action = AIEngine.decideMove(current, current.rules.aiDifficulty)
+                val action = if (npc != null && current.rules.mode != GameMode.QUAD_MODE) {
+                    AIEngine.decideNPCMove(current, npc.personality)
+                } else {
+                    AIEngine.decideMove(current, current.rules.aiDifficulty)
+                }
+
                 when (action) {
                     is AIAction.Move -> {
-                        val updated = GameEngine.makeMove(current, action.to, PlayerId.PLAYER_2)
+                        val updated = GameEngine.makeMove(current, action.to, turnPlayerId)
                         _gameState.value = updated
                         soundManager.playMove()
+
+                        // Occasional natural human emote
+                        if (Random.nextFloat() < 0.08f) {
+                            val emote = if (npc?.personality == NPCPersonality.THE_RUSHER) "⚡" else "😎"
+                            showOpponentEmote(emote)
+                        }
+
                         if (updated.status == GameStatus.FINISHED) {
                             handleGameFinished(updated)
+                        } else {
+                            checkTriggerAI(updated)
                         }
                     }
                     is AIAction.PlaceWall -> {
-                        val updated = GameEngine.placeWall(current, action.wall, PlayerId.PLAYER_2)
+                        val updated = GameEngine.placeWall(current, action.wall, turnPlayerId)
                         _gameState.value = updated
                         soundManager.playWallPlace()
+
+                        // Occasional natural reaction emote when placing a barrier
+                        if (Random.nextFloat() < 0.12f) {
+                            val emote = if (npc?.personality == NPCPersonality.THE_ARCHITECT) "🧱" else "😈"
+                            showOpponentEmote(emote)
+                        }
+
                         if (updated.status == GameStatus.FINISHED) {
                             handleGameFinished(updated)
+                        } else {
+                            checkTriggerAI(updated)
                         }
                     }
                 }
@@ -853,7 +1136,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         }
 
         viewModelScope.launch {
-            repository.saveCompletedMatch(finalState, duration)
+            repository.saveCompletedMatch(finalState, duration, localPlayerId)
             _userProfile.value = repository.getOrCreateProfile()
         }
     }
@@ -887,20 +1170,48 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
 
         _activeEmote.value = ActiveEmote(localPlayerId, emoji, localName)
         viewModelScope.launch {
-            delay(2400)
+            delay(3200)
             _activeEmote.value = null
         }
 
         if (isP2PActiveMatch) {
             p2pConnection?.sendEmote(emoji)
         } else if (current.player2.isAI) {
+            val npc = _activeNPC.value
             viewModelScope.launch {
-                delay(1200)
-                val aiResponses = listOf("🫡", "🤝", "🔥", "😂", "👏")
-                val responseEmoji = aiResponses.random()
-                _activeEmote.value = ActiveEmote(PlayerId.PLAYER_2, responseEmoji, current.player2.name)
+                // Human-like thinking delay: 1800ms - 3600ms (never instantly in the same second)
+                val delayTime = Random.nextLong(1800L, 3600L)
+                delay(delayTime)
+
+                val activeCurrent = _gameState.value ?: return@launch
+                if (activeCurrent.status != GameStatus.IN_PROGRESS && activeCurrent.status != GameStatus.FINISHED) return@launch
+
+                val isArabic = npc?.countryFlag in listOf("🇸🇦", "🇪🇬", "🇦🇪", "🇲🇦", "🇩🇿", "🇯🇴", "🇰🇼", "🇶🇦", "🇴🇲", "🇧🇭", "🇮🇶", "🇱🇧", "🇾🇪", "🇸🇾", "🇹🇳", "🇱🇾", "🇸🇩", "🇵🇸") ||
+                        (npc?.name?.any { it in '\u0600'..'\u06FF' } == true)
+
+                // User request: "لا اريدهم أن يتكلموا كثير، اغلب ردودهم تكون ايموجيات مفهوم"
+                // 80% emojis, 20% short natural human phrase
+                val respondWithEmoji = Random.nextFloat() < 0.80f
+
+                val responseContent = if (respondWithEmoji) {
+                    val pool = if (isArabic) {
+                        listOf("🤝", "😎", "🔥", "😂", "👏", "🫡", "🧱", "⚡", "🎯", "🤯", "✌️")
+                    } else {
+                        listOf("🤝", "😎", "🔥", "👏", "🫡", "🧱", "⚡", "🎯", "😱", "🏆", "👍")
+                    }
+                    pool.random()
+                } else {
+                    val phrases = if (isArabic) {
+                        listOf("هلا والله 🤝", "كفو يا بطل 🔥", "حركة قوية!", "بالتوفيق!", "ما شاء الله", "الله يستر هههه", "gg يا غالي")
+                    } else {
+                        listOf("gg! 🤝", "nice move! 🔥", "gl hf!", "well played!", "close one! 😱", "thanks!", "whoa haha")
+                    }
+                    phrases.random()
+                }
+
+                _activeEmote.value = ActiveEmote(PlayerId.PLAYER_2, responseContent, current.player2.name)
                 soundManager.playEmote()
-                delay(2400)
+                delay(3200)
                 _activeEmote.value = null
             }
         }

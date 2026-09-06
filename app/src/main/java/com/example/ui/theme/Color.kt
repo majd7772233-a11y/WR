@@ -20,6 +20,24 @@ val Player2Primary = Color(0xFFFF416C)
 val Player2Dark = Color(0xFFE11D48)
 val Player2Glow = Color(0x66FF416C)
 
+// Player 3 (Emerald Green / الأخضر)
+val Player3Primary = Color(0xFF10B981)
+val Player3Dark = Color(0xFF047857)
+val Player3Glow = Color(0x6610B981)
+
+// Player 4 (Amber Gold / الأصفر)
+val Player4Primary = Color(0xFFFBBF24)
+val Player4Dark = Color(0xFFB45309)
+val Player4Glow = Color(0x66FBBF24)
+
+// Race Mode Colors & Accents
+val RaceTrackSurface = Color(0xFF0D1527)
+val RaceFinishGreen = Color(0xFF10B981)
+val RaceFinishGold = Color(0xFF10B981) // Alias to green for race finish
+val RaceStartGreen = Color(0xFF38BDF8) // Distinct start line cyan/blue
+val RaceCheckeredWhite = Color(0xFFF8FAFC)
+val RaceCheckeredBlack = Color(0xFF1E293B)
+
 // Walls & Board Accents
 val WallWoodPrimary = Color(0xFFF59E0B)
 val WallWoodDark = Color(0xFFD97706)

@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import com.example.ui.theme.*
 import com.example.wallrush.domain.engine.RuleEngine
 import com.example.wallrush.domain.model.*
@@ -65,7 +64,7 @@ fun GameBoardCanvas(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        val boardDim = min(maxWidth, maxHeight)
+        val boardDim = if (maxWidth < maxHeight) maxWidth else maxHeight
 
         Canvas(
             modifier = Modifier
@@ -74,10 +73,10 @@ fun GameBoardCanvas(
                     if (!isLocalTurn) return@pointerInput
 
                     detectTapGestures { offset ->
-                        val w = size.width
-                        val padding = w * 0.035f
+                        val w = kotlin.math.min(size.width, size.height).toFloat()
+                        val padding = w * 0.032f
                         val playableWidth = w - (padding * 2)
-                        val gap = playableWidth * 0.024f
+                        val gap = playableWidth * 0.028f
                         val cellSize = (playableWidth - (gap * 8)) / 9f
                         val step = cellSize + gap
 
@@ -93,7 +92,7 @@ fun GameBoardCanvas(
                                 val pegCenterX = (dwx + 1) * step - (gap / 2f)
                                 val pegCenterY = (dwy + 1) * step - (gap / 2f)
                                 val distSq = (localX - pegCenterX) * (localX - pegCenterX) + (localY - pegCenterY) * (localY - pegCenterY)
-                                val hitRadius = step * 0.45f
+                                val hitRadius = step * 0.48f
                                 if (distSq <= hitRadius * hitRadius) {
                                     val modelWx = if (isFlipped) 7 - dwx else dwx
                                     val modelWy = if (isFlipped) 7 - dwy else dwy
@@ -117,6 +116,10 @@ fun GameBoardCanvas(
                                 onPawnClicked(PlayerId.PLAYER_1)
                             } else if (clickedPos == state.player2.position) {
                                 onPawnClicked(PlayerId.PLAYER_2)
+                            } else if (state.player3 != null && clickedPos == state.player3.position) {
+                                onPawnClicked(PlayerId.PLAYER_3)
+                            } else if (state.player4 != null && clickedPos == state.player4.position) {
+                                onPawnClicked(PlayerId.PLAYER_4)
                             } else {
                                 onCellClicked(clickedPos)
                             }
@@ -124,36 +127,44 @@ fun GameBoardCanvas(
                     }
                 }
         ) {
-            val w = size.width
-            val padding = w * 0.035f
+            val w = kotlin.math.min(size.width, size.height)
+            val padding = w * 0.032f
             val playableWidth = w - (padding * 2)
-            val gap = playableWidth * 0.024f
+            val gap = playableWidth * 0.028f
             val cellSize = (playableWidth - (gap * 8)) / 9f
             val step = cellSize + gap
+            val cellRadius = cellSize * 0.16f
+            val boardRadius = w * 0.045f
 
             // 1. Draw Board Background Container
+            val boardBg = if (state.rules.mode == GameMode.RACE_MODE) RaceTrackSurface else theme.boardSurface
+            val boardBorder = if (state.rules.mode == GameMode.RACE_MODE) RaceFinishGreen.copy(alpha = 0.7f) else theme.cellBorderColor
+
             drawRoundRect(
-                color = theme.boardSurface,
+                color = boardBg,
                 topLeft = Offset(0f, 0f),
                 size = Size(w, w),
-                cornerRadius = CornerRadius(24f, 24f)
+                cornerRadius = CornerRadius(boardRadius, boardRadius)
             )
             drawRoundRect(
-                color = theme.cellBorderColor,
+                color = boardBorder,
                 topLeft = Offset(0f, 0f),
                 size = Size(w, w),
-                cornerRadius = CornerRadius(24f, 24f),
-                style = Stroke(width = 3f)
+                cornerRadius = CornerRadius(boardRadius, boardRadius),
+                style = Stroke(width = if (state.rules.mode == GameMode.RACE_MODE) 3.5f else 2.5f)
             )
 
-            // 2. Goal Lines indicators (Top for P1, Bottom for P2 in normal orientation)
+            // 2. Goal Lines indicators
+            val isQuadMode = state.rules.mode == GameMode.QUAD_MODE
+            val isRaceMode = state.rules.mode == GameMode.RACE_MODE
+
             val p1GoalColor = theme.p1Primary.copy(alpha = 0.22f)
             val p2GoalColor = theme.p2Primary.copy(alpha = 0.22f)
 
             // Paint for coordinates (1..9, i..a)
             val textPaint = Paint().apply {
                 color = theme.cellBorderColor.copy(alpha = 0.55f).toArgb()
-                textSize = cellSize * 0.26f
+                textSize = cellSize * 0.24f
                 isAntiAlias = true
                 textAlign = Paint.Align.LEFT
                 typeface = Typeface.DEFAULT_BOLD
@@ -170,10 +181,20 @@ fun GameBoardCanvas(
 
                     val isP1GoalRow = if (isFlipped) (r == 8) else (r == 0)
                     val isP2GoalRow = if (isFlipped) (r == 0) else (r == 8)
+                    val isQuadCenterCell = isQuadMode && r == 4 && c == 4
+                    val isRaceFinishCell = isRaceMode && ((if (isFlipped) r == 8 else r == 0))
+                    val isRaceStartCell = isRaceMode && ((if (isFlipped) r == 0 else r == 8)) && (c == 3 || c == 5)
 
                     val bgCellColor = when {
-                        isP1GoalRow -> p1GoalColor
-                        isP2GoalRow -> p2GoalColor
+                        isQuadCenterCell -> GoldRating.copy(alpha = 0.25f + (glowAlpha * 0.15f))
+                        isRaceFinishCell -> if ((r + c) % 2 == 0) RaceFinishGreen.copy(alpha = 0.40f) else RaceCheckeredWhite.copy(alpha = 0.22f)
+                        isRaceStartCell -> RaceStartGreen.copy(alpha = 0.22f)
+                        isQuadMode && r == 8 && c == 4 -> theme.p1Primary.copy(alpha = 0.18f) // P1 entry
+                        isQuadMode && r == 0 && c == 4 -> theme.p2Primary.copy(alpha = 0.18f) // P2 entry
+                        isQuadMode && r == 4 && c == 0 -> Player3Primary.copy(alpha = 0.18f)  // P3 entry
+                        isQuadMode && r == 4 && c == 8 -> Player4Primary.copy(alpha = 0.18f)  // P4 entry
+                        !isQuadMode && !isRaceMode && isP1GoalRow -> p1GoalColor
+                        !isQuadMode && !isRaceMode && isP2GoalRow -> p2GoalColor
                         (r + c) % 2 == 0 -> theme.cellColor
                         else -> theme.cellAltColor
                     }
@@ -182,33 +203,57 @@ fun GameBoardCanvas(
                         color = bgCellColor,
                         topLeft = Offset(cellLeft, cellTop),
                         size = Size(cellSize, cellSize),
-                        cornerRadius = CornerRadius(12f, 12f)
+                        cornerRadius = CornerRadius(cellRadius, cellRadius)
                     )
 
                     // Cell border
+                    val cellBorderColor = when {
+                        isQuadCenterCell -> GoldRating
+                        isRaceFinishCell -> RaceFinishGreen
+                        isRaceStartCell -> RaceStartGreen.copy(alpha = 0.6f)
+                        !isQuadMode && !isRaceMode && isP1GoalRow -> theme.p1Primary.copy(alpha = 0.45f)
+                        !isQuadMode && !isRaceMode && isP2GoalRow -> theme.p2Primary.copy(alpha = 0.45f)
+                        else -> theme.cellBorderColor
+                    }
+
                     drawRoundRect(
-                        color = if (isP1GoalRow) theme.p1Primary.copy(alpha = 0.45f)
-                        else if (isP2GoalRow) theme.p2Primary.copy(alpha = 0.45f)
-                        else theme.cellBorderColor,
+                        color = cellBorderColor,
                         topLeft = Offset(cellLeft, cellTop),
                         size = Size(cellSize, cellSize),
-                        cornerRadius = CornerRadius(12f, 12f),
-                        style = Stroke(width = 1.5f)
+                        cornerRadius = CornerRadius(cellRadius, cellRadius),
+                        style = Stroke(width = if (isQuadCenterCell || isRaceFinishCell) 2.2f else 1.2f)
                     )
+
+                    // Special indicator inside Quad Center cell (4,4)
+                    if (isQuadCenterCell) {
+                        val centerCellX = cellLeft + (cellSize / 2f)
+                        val centerCellY = cellTop + (cellSize / 2f)
+                        // Glowing target ring
+                        drawCircle(
+                            color = GoldRating.copy(alpha = glowAlpha),
+                            radius = (cellSize * 0.32f) * pulseScale,
+                            center = Offset(centerCellX, centerCellY),
+                            style = Stroke(width = 2f)
+                        )
+                        // Inner star / gold dot
+                        drawCircle(
+                            color = GoldRating,
+                            radius = cellSize * 0.15f,
+                            center = Offset(centerCellX, centerCellY)
+                        )
+                    }
 
                     // Draw coordinates on edge cells
                     if (theme.showCoordinates) {
                         if (c == 0) {
-                            // Row label on the left of cell
                             drawContext.canvas.nativeCanvas.drawText(
                                 rowLabels[r],
                                 cellLeft + (cellSize * 0.08f),
-                                cellTop + (cellSize * 0.32f),
+                                cellTop + (cellSize * 0.30f),
                                 textPaint
                             )
                         }
                         if (r == 8) {
-                            // Column label on the bottom of cell
                             drawContext.canvas.nativeCanvas.drawText(
                                 colLabels[c],
                                 cellLeft + (cellSize * 0.08f),
@@ -248,14 +293,11 @@ fun GameBoardCanvas(
 
             // 5. Draw Placed Walls
             for (wall in state.walls) {
-                val (wColor, wBorder) = if (theme.isWallPlayerSpecific) {
-                    if (wall.placedBy == PlayerId.PLAYER_1) {
-                        Pair(theme.p1WallColor, theme.p1WallBorder)
-                    } else {
-                        Pair(theme.p2WallColor, theme.p2WallBorder)
-                    }
-                } else {
-                    Pair(theme.defaultWallColor, theme.defaultWallBorder)
+                val (wColor, wBorder) = when (wall.placedBy) {
+                    PlayerId.PLAYER_1 -> Pair(theme.p1WallColor, theme.p1WallBorder)
+                    PlayerId.PLAYER_2 -> Pair(theme.p2WallColor, theme.p2WallBorder)
+                    PlayerId.PLAYER_3 -> Pair(Player3Primary, Player3Dark)
+                    PlayerId.PLAYER_4 -> Pair(Player4Primary, Player4Dark)
                 }
 
                 val dispWall = if (isFlipped) wall.copy(x = 7 - wall.x, y = 7 - wall.y) else wall
@@ -294,7 +336,7 @@ fun GameBoardCanvas(
             }
 
             // 7. Draw Player Pawns
-            // Player 1 (P1) - Blue / Host
+            // Player 1 (P1) - Blue
             val p1DispPos = if (isFlipped) Position(8 - state.player1.position.x, 8 - state.player1.position.y) else state.player1.position
             drawPawn(
                 pos = p1DispPos,
@@ -309,7 +351,7 @@ fun GameBoardCanvas(
                 glowAlpha = glowAlpha
             )
 
-            // Player 2 (P2) - Red / Guest
+            // Player 2 (P2) - Red
             val p2DispPos = if (isFlipped) Position(8 - state.player2.position.x, 8 - state.player2.position.y) else state.player2.position
             drawPawn(
                 pos = p2DispPos,
@@ -323,6 +365,40 @@ fun GameBoardCanvas(
                 pulseScale = if (state.currentTurn == PlayerId.PLAYER_2) pulseScale else 1f,
                 glowAlpha = glowAlpha
             )
+
+            // Player 3 (P3) - Emerald Green (in Quad Mode)
+            state.player3?.let { p3 ->
+                val p3DispPos = if (isFlipped) Position(8 - p3.position.x, 8 - p3.position.y) else p3.position
+                drawPawn(
+                    pos = p3DispPos,
+                    padding = padding,
+                    step = step,
+                    cellSize = cellSize,
+                    primaryColor = Player3Primary,
+                    darkColor = Player3Dark,
+                    glowColor = Player3Glow,
+                    isSelected = (selectedPawn == PlayerId.PLAYER_3 || (state.currentTurn == PlayerId.PLAYER_3 && isLocalTurn)),
+                    pulseScale = if (state.currentTurn == PlayerId.PLAYER_3) pulseScale else 1f,
+                    glowAlpha = glowAlpha
+                )
+            }
+
+            // Player 4 (P4) - Amber Gold (in Quad Mode)
+            state.player4?.let { p4 ->
+                val p4DispPos = if (isFlipped) Position(8 - p4.position.x, 8 - p4.position.y) else p4.position
+                drawPawn(
+                    pos = p4DispPos,
+                    padding = padding,
+                    step = step,
+                    cellSize = cellSize,
+                    primaryColor = Player4Primary,
+                    darkColor = Player4Dark,
+                    glowColor = Player4Glow,
+                    isSelected = (selectedPawn == PlayerId.PLAYER_4 || (state.currentTurn == PlayerId.PLAYER_4 && isLocalTurn)),
+                    pulseScale = if (state.currentTurn == PlayerId.PLAYER_4) pulseScale else 1f,
+                    glowAlpha = glowAlpha
+                )
+            }
         }
     }
 }
@@ -392,7 +468,7 @@ private fun DrawScope.drawWall(
     alpha: Float,
     isGlow: Boolean
 ) {
-    val wallThickness = gap * 1.35f
+    val wallThickness = kotlin.math.max(gap * 1.45f, 16f)
     val wallLength = (cellSize * 2) + gap
 
     val (topLeft, size) = if (wall.orientation == WallOrientation.HORIZONTAL) {

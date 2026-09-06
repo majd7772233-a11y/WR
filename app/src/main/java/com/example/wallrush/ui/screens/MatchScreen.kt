@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.DeepSlateBackground
 import com.example.ui.theme.TextPrimary
@@ -50,10 +51,14 @@ fun MatchScreen(
     val isUserPlayer1 = (localPlayerId == PlayerId.PLAYER_1)
     val userPlayer = if (isUserPlayer1) current.player1 else current.player2
     val opponentPlayer = if (isUserPlayer1) current.player2 else current.player1
+    val isQuadMode = current.rules.mode == GameMode.QUAD_MODE
+    val activeQuadPlayer = current.getCurrentPlayer()
+    val activeControlPlayer = if (isQuadMode) activeQuadPlayer else userPlayer
 
     // Check if it's currently the local user's turn
     val isLocalTurn = when (current.rules.mode) {
         GameMode.PASS_AND_PLAY -> true
+        GameMode.QUAD_MODE -> !activeQuadPlayer.isAI
         else -> current.currentTurn == localPlayerId
     }
 
@@ -84,6 +89,8 @@ fun MatchScreen(
                                 GameMode.QUICK_MATCH -> Strings.get("quick_match", language)
                                 GameMode.PUBLIC_ROOM -> "Room ${current.roomCode}"
                                 GameMode.FRIEND_ROOM -> "Room ${current.roomCode}"
+                                GameMode.RACE_MODE -> Strings.get("race_mode", language)
+                                GameMode.QUAD_MODE -> Strings.get("quad_mode", language)
                             },
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimary
@@ -164,7 +171,7 @@ fun MatchScreen(
                             )
                         }
 
-                        // Right Pane: Opponent at top, User & Controls at bottom
+                        // Right Pane: Opponent / Quad Strip at top, User & Controls at bottom
                         Column(
                             modifier = Modifier
                                 .weight(0.85f)
@@ -173,25 +180,33 @@ fun MatchScreen(
                             verticalArrangement = Arrangement.SpaceBetween,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            PlayerHeaderCard(
-                                player = opponentPlayer,
-                                isCurrentTurn = current.currentTurn == opponentPlayer.id,
-                                isTop = true,
-                                language = language,
-                                isLocalUser = false,
-                                theme = settings.theme
-                            )
+                            if (isQuadMode) {
+                                QuadPlayerStrip(
+                                    state = current,
+                                    language = language,
+                                    theme = settings.theme
+                                )
+                            } else {
+                                PlayerHeaderCard(
+                                    player = opponentPlayer,
+                                    isCurrentTurn = current.currentTurn == opponentPlayer.id,
+                                    isTop = true,
+                                    language = language,
+                                    isLocalUser = false,
+                                    theme = settings.theme
+                                )
+                            }
 
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 PlayerHeaderCard(
-                                    player = userPlayer,
-                                    isCurrentTurn = current.currentTurn == userPlayer.id,
+                                    player = activeControlPlayer,
+                                    isCurrentTurn = current.currentTurn == activeControlPlayer.id,
                                     isTop = false,
                                     language = language,
-                                    isLocalUser = true,
+                                    isLocalUser = !activeControlPlayer.isAI,
                                     theme = settings.theme
                                 )
 
@@ -200,7 +215,7 @@ fun MatchScreen(
                                     wallOrientation = wallOrientation,
                                     previewWall = previewWall,
                                     isWallValid = isWallValid,
-                                    remainingWalls = userPlayer.remainingWalls,
+                                    remainingWalls = activeControlPlayer.remainingWalls,
                                     isLocalTurn = isLocalTurn && current.status == GameStatus.IN_PROGRESS,
                                     language = language,
                                     onToggleWallMode = { viewModel.toggleWallMode() },
@@ -211,6 +226,118 @@ fun MatchScreen(
                                     onSendEmote = { emoji -> viewModel.sendEmote(emoji) }
                                 )
                             }
+                        }
+                    }
+                } else if (current.rules.mode == GameMode.PASS_AND_PLAY) {
+                    // Local 2-Player Split Screen Layout (Face-to-Face)
+                    // Red side (Player 2) facing opposite (rotated 180°), Board in middle, Blue side (Player 1) at bottom
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .widthIn(max = 540.dp)
+                            .align(Alignment.Center)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Top Player: Player 2 (Red), Inverted 180 degrees
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .rotate(180f)
+                        ) {
+                            LocalPlayerControlPanel(
+                                playerId = PlayerId.PLAYER_2,
+                                playerState = current.player2,
+                                isCurrentTurn = current.currentTurn == PlayerId.PLAYER_2,
+                                isWallMode = isWallMode && current.currentTurn == PlayerId.PLAYER_2,
+                                wallOrientation = wallOrientation,
+                                previewWall = previewWall,
+                                isWallValid = isWallValid,
+                                language = language,
+                                onToggleWallMode = {
+                                    if (current.currentTurn == PlayerId.PLAYER_2) viewModel.toggleWallMode()
+                                },
+                                onToggleOrientation = {
+                                    if (current.currentTurn == PlayerId.PLAYER_2) viewModel.toggleWallOrientation()
+                                },
+                                onConfirmWall = {
+                                    if (current.currentTurn == PlayerId.PLAYER_2) viewModel.confirmWallPlacement()
+                                },
+                                onCancelWall = {
+                                    if (current.currentTurn == PlayerId.PLAYER_2) viewModel.cancelWallPlacement()
+                                },
+                                onResignClicked = {
+                                    viewModel.showResignConfirm(true)
+                                },
+                                onSendEmote = { emoji ->
+                                    viewModel.sendEmote(emoji)
+                                }
+                            )
+                        }
+
+                        // Center: Game Board Canvas
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false)
+                                .padding(vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            GameBoardCanvas(
+                                state = current,
+                                isLocalTurn = current.status == GameStatus.IN_PROGRESS,
+                                legalMoves = legalMoves,
+                                selectedPawn = selectedPawn,
+                                previewWall = previewWall,
+                                isWallValid = isWallValid,
+                                onCellClicked = { pos -> viewModel.onCellClicked(pos) },
+                                onPawnClicked = { pid -> viewModel.onPawnClicked(pid) },
+                                onWallSlotClicked = { x, y -> viewModel.onWallSlotClicked(x, y) },
+                                theme = settings.theme,
+                                isFlipped = false,
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            // Floating Emote Banner on Board
+                            EmoteBanner(
+                                activeEmote = activeEmote,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
+
+                        // Bottom Player: Player 1 (Blue), Normal 0 degrees
+                        Box(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LocalPlayerControlPanel(
+                                playerId = PlayerId.PLAYER_1,
+                                playerState = current.player1,
+                                isCurrentTurn = current.currentTurn == PlayerId.PLAYER_1,
+                                isWallMode = isWallMode && current.currentTurn == PlayerId.PLAYER_1,
+                                wallOrientation = wallOrientation,
+                                previewWall = previewWall,
+                                isWallValid = isWallValid,
+                                language = language,
+                                onToggleWallMode = {
+                                    if (current.currentTurn == PlayerId.PLAYER_1) viewModel.toggleWallMode()
+                                },
+                                onToggleOrientation = {
+                                    if (current.currentTurn == PlayerId.PLAYER_1) viewModel.toggleWallOrientation()
+                                },
+                                onConfirmWall = {
+                                    if (current.currentTurn == PlayerId.PLAYER_1) viewModel.confirmWallPlacement()
+                                },
+                                onCancelWall = {
+                                    if (current.currentTurn == PlayerId.PLAYER_1) viewModel.cancelWallPlacement()
+                                },
+                                onResignClicked = {
+                                    viewModel.showResignConfirm(true)
+                                },
+                                onSendEmote = { emoji ->
+                                    viewModel.sendEmote(emoji)
+                                }
+                            )
                         }
                     }
                 } else {
@@ -224,15 +351,23 @@ fun MatchScreen(
                         verticalArrangement = Arrangement.SpaceBetween,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Top: Opponent Card
-                        PlayerHeaderCard(
-                            player = opponentPlayer,
-                            isCurrentTurn = current.currentTurn == opponentPlayer.id,
-                            isTop = true,
-                            language = language,
-                            isLocalUser = false,
-                            theme = settings.theme
-                        )
+                        // Top: Opponent Card or Quad Strip
+                        if (isQuadMode) {
+                            QuadPlayerStrip(
+                                state = current,
+                                language = language,
+                                theme = settings.theme
+                            )
+                        } else {
+                            PlayerHeaderCard(
+                                player = opponentPlayer,
+                                isCurrentTurn = current.currentTurn == opponentPlayer.id,
+                                isTop = true,
+                                language = language,
+                                isLocalUser = false,
+                                theme = settings.theme
+                            )
+                        }
 
                         // Center: Game Board Canvas
                         Box(
@@ -270,11 +405,11 @@ fun MatchScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             PlayerHeaderCard(
-                                player = userPlayer,
-                                isCurrentTurn = current.currentTurn == userPlayer.id,
+                                player = activeControlPlayer,
+                                isCurrentTurn = current.currentTurn == activeControlPlayer.id,
                                 isTop = false,
                                 language = language,
-                                isLocalUser = true,
+                                isLocalUser = !activeControlPlayer.isAI,
                                 theme = settings.theme
                             )
 
@@ -283,7 +418,7 @@ fun MatchScreen(
                                 wallOrientation = wallOrientation,
                                 previewWall = previewWall,
                                 isWallValid = isWallValid,
-                                remainingWalls = userPlayer.remainingWalls,
+                                remainingWalls = activeControlPlayer.remainingWalls,
                                 isLocalTurn = isLocalTurn && current.status == GameStatus.IN_PROGRESS,
                                 language = language,
                                 onToggleWallMode = { viewModel.toggleWallMode() },
@@ -309,6 +444,7 @@ fun MatchScreen(
             VictoryDialog(
                 state = current,
                 language = language,
+                localPlayerId = localPlayerId,
                 onRematchClicked = { viewModel.startRematch() },
                 onReplayClicked = { viewModel.openReplayForCurrentMatch() },
                 onHomeClicked = { viewModel.navigateTo(ScreenState.HOME) }

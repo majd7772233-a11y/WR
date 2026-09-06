@@ -3,6 +3,8 @@ package com.example.wallrush.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -35,9 +37,11 @@ fun PublicRoomsScreen(
     val settings by viewModel.settings.collectAsState()
     val publicRooms by viewModel.publicRooms.collectAsState()
     val showNoInternet by viewModel.showNoInternetDialog.collectAsState()
+    val createdRoomChallenge by viewModel.createdRoomChallenge.collectAsState()
     val language = settings.language
 
     var showCreateDialog by remember { mutableStateOf(false) }
+    var selectedMode by remember { mutableStateOf(GameMode.PUBLIC_ROOM) }
     var selectedWalls by remember { mutableStateOf(10) }
     var selectedTime by remember { mutableStateOf(300) }
 
@@ -159,25 +163,57 @@ fun PublicRoomsScreen(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(text = Strings.get("select_game_mode", language), fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            Triple(GameMode.PUBLIC_ROOM, Strings.get("classic_mode_short", language), "⚔️"),
+                            Triple(GameMode.RACE_MODE, Strings.get("race_mode_short", language), "🏁"),
+                            Triple(GameMode.QUAD_MODE, Strings.get("quad_mode_short", language), "🎯")
+                        ).forEach { (m, label, icon) ->
+                            FilterChip(
+                                selected = selectedMode == m,
+                                onClick = { selectedMode = m },
+                                label = { Text("$icon $label", fontSize = 11.sp, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
                     Text(text = Strings.get("walls_count", language), fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(10, 15).forEach { walls ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(5, 10, 15).forEach { walls ->
                             FilterChip(
                                 selected = selectedWalls == walls,
                                 onClick = { selectedWalls = walls },
-                                label = { Text("$walls 🧱") }
+                                label = { Text("$walls 🧱", maxLines = 1) },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
 
                     Text(text = Strings.get("time_control", language), fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         listOf(Pair(180, "3m"), Pair(300, "5m"), Pair(0, "∞")).forEach { (t, label) ->
                             FilterChip(
                                 selected = selectedTime == t,
                                 onClick = { selectedTime = t },
-                                label = { Text(label) }
+                                label = { Text(label, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                     }
@@ -187,14 +223,12 @@ fun PublicRoomsScreen(
                 Button(
                     onClick = {
                         showCreateDialog = false
-                        viewModel.startMatch(
+                        viewModel.createPublicRoomWithWaiting(
                             rules = GameRules(
                                 wallsPerPlayer = selectedWalls,
                                 timeLimitSeconds = selectedTime,
-                                mode = GameMode.PUBLIC_ROOM
-                            ),
-                            player2Name = "Rival Player",
-                            player2IsAI = true
+                                mode = selectedMode
+                            )
                         )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Player1Primary, contentColor = Color.Black)
@@ -205,6 +239,147 @@ fun PublicRoomsScreen(
             dismissButton = {
                 TextButton(onClick = { showCreateDialog = false }) {
                     Text(text = Strings.get("cancel", language), color = TextSecondary)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Waiting Room Challenge Dialog: "Player wants to play with you" + 10-25s timer + Accept / Reject
+    createdRoomChallenge?.let { challenge ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissRoomWaiting() },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Player1Primary,
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = Strings.get("waiting_room_title", language),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "${Strings.get("room_code", language)}: ${challenge.roomCode}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Player1Primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(1.5.dp, Player1Primary, RoundedCornerShape(16.dp)),
+                        shape = RoundedCornerShape(16.dp),
+                        color = DeepSlateBackground
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "🎮 ${Strings.get("player_challenge_title", language)}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimary
+                            )
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(Player1Primary.copy(alpha = 0.2f))
+                                        .border(1.5.dp, Player1Primary, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = challenge.challengerNpc.countryFlag, fontSize = 20.sp)
+                                }
+                                Column {
+                                    Text(
+                                        text = challenge.challengerNpc.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "${challenge.challengerNpc.countryName} • ⭐ ${challenge.challengerNpc.rating}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = GoldRating,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+
+                            // Challenge Timer
+                            LinearProgressIndicator(
+                                progress = { challenge.remainingSeconds.toFloat() / challenge.durationSeconds.toFloat() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = if (challenge.remainingSeconds <= 5) DangerRed else SuccessGreen,
+                                trackColor = CellBorder
+                            )
+
+                            Text(
+                                text = "⏱ ${challenge.remainingSeconds}s ${if (language == com.example.wallrush.ui.localization.AppLanguage.ARABIC) "متبقية للرد" else "remaining"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (challenge.remainingSeconds <= 5) DangerRed else TextSecondary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.acceptRoomChallenge() },
+                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Color.Black),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = Strings.get("accept", language), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = { viewModel.dismissRoomWaiting() }) {
+                        Text(text = Strings.get("cancel", language), color = TextSecondary)
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.rejectRoomChallenge() },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = DangerRed),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = DangerRed, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = Strings.get("reject", language), fontWeight = FontWeight.Bold, color = DangerRed)
+                    }
                 }
             },
             containerColor = SurfaceCard,
@@ -270,6 +445,32 @@ private fun PublicRoomCard(
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Player1Primary,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = when (room.mode) {
+                                GameMode.RACE_MODE -> Color(0xFFEF4444).copy(alpha = 0.2f)
+                                GameMode.QUAD_MODE -> Color(0xFF8B5CF6).copy(alpha = 0.2f)
+                                else -> Player1Primary.copy(alpha = 0.2f)
+                            }
+                        ) {
+                            val modeBadge = when (room.mode) {
+                                GameMode.RACE_MODE -> Strings.get("race_mode_short", language)
+                                GameMode.QUAD_MODE -> Strings.get("quad_mode_short", language)
+                                else -> Strings.get("classic_mode_short", language)
+                            }
+                            Text(
+                                text = modeBadge,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = when (room.mode) {
+                                    GameMode.RACE_MODE -> Color(0xFFFF6B6B)
+                                    GameMode.QUAD_MODE -> Color(0xFFA78BFA)
+                                    else -> Player1Primary
+                                },
                                 fontSize = 10.sp
                             )
                         }

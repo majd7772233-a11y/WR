@@ -203,4 +203,159 @@ object PathFinder {
         }
         return path
     }
+
+    /**
+     * Checks if a path exists from start position to a specific target cell (e.g. center cell (4, 4) in Quad Mode).
+     */
+    fun hasPathToCell(
+        start: Position,
+        targetCell: Position,
+        walls: List<Wall>
+    ): Boolean {
+        if (start == targetCell) return true
+
+        val visited = Array(9) { BooleanArray(9) }
+        val queue = ArrayDeque<Position>()
+
+        queue.add(start)
+        visited[start.y][start.x] = true
+
+        val neighbors = arrayOf(
+            Pair(0, -1),
+            Pair(0, 1),
+            Pair(-1, 0),
+            Pair(1, 0)
+        )
+
+        while (queue.isNotEmpty()) {
+            val current = queue.poll() ?: continue
+
+            if (current == targetCell) {
+                return true
+            }
+
+            for ((dx, dy) in neighbors) {
+                val nx = current.x + dx
+                val ny = current.y + dy
+
+                if (nx in 0..8 && ny in 0..8 && !visited[ny][nx]) {
+                    val next = Position(nx, ny)
+                    if (!isPassageBlocked(current, next, walls)) {
+                        visited[ny][nx] = true
+                        queue.add(next)
+                    }
+                }
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Calculates shortest distance from start position to a specific target cell.
+     */
+    fun shortestDistanceToCell(
+        start: Position,
+        targetCell: Position,
+        walls: List<Wall>
+    ): Int {
+        if (start == targetCell) return 0
+
+        val dist = Array(9) { IntArray(9) { -1 } }
+        val queue = ArrayDeque<Position>()
+
+        queue.add(start)
+        dist[start.y][start.x] = 0
+
+        val neighbors = arrayOf(
+            Pair(0, -1),
+            Pair(0, 1),
+            Pair(-1, 0),
+            Pair(1, 0)
+        )
+
+        while (queue.isNotEmpty()) {
+            val current = queue.poll() ?: continue
+            val currentDist = dist[current.y][current.x]
+
+            if (current == targetCell) {
+                return currentDist
+            }
+
+            for ((dx, dy) in neighbors) {
+                val nx = current.x + dx
+                val ny = current.y + dy
+
+                if (nx in 0..8 && ny in 0..8 && dist[ny][nx] == -1) {
+                    val next = Position(nx, ny)
+                    if (!isPassageBlocked(current, next, walls)) {
+                        dist[ny][nx] = currentDist + 1
+                        queue.add(next)
+                    }
+                }
+            }
+        }
+
+        return Int.MAX_VALUE / 2
+    }
+
+    /**
+     * Finds shortest path from start position to a specific target cell.
+     */
+    fun findShortestPathToCell(
+        start: Position,
+        targetCell: Position,
+        walls: List<Wall>
+    ): List<Position> {
+        if (start == targetCell) return listOf(start)
+
+        val parent = mutableMapOf<Position, Position>()
+        val visited = Array(9) { BooleanArray(9) }
+        val queue = ArrayDeque<Position>()
+
+        queue.add(start)
+        visited[start.y][start.x] = true
+
+        var reached = false
+
+        val neighbors = arrayOf(
+            Pair(0, -1),
+            Pair(0, 1),
+            Pair(-1, 0),
+            Pair(1, 0)
+        )
+
+        while (queue.isNotEmpty()) {
+            val current = queue.poll() ?: continue
+
+            if (current == targetCell) {
+                reached = true
+                break
+            }
+
+            for ((dx, dy) in neighbors) {
+                val nx = current.x + dx
+                val ny = current.y + dy
+
+                if (nx in 0..8 && ny in 0..8 && !visited[ny][nx]) {
+                    val next = Position(nx, ny)
+                    if (!isPassageBlocked(current, next, walls)) {
+                        visited[ny][nx] = true
+                        parent[next] = current
+                        queue.add(next)
+                    }
+                }
+            }
+        }
+
+        if (!reached) return emptyList()
+
+        val path = mutableListOf<Position>()
+        var curr: Position? = targetCell
+        while (curr != null) {
+            path.add(0, curr)
+            curr = parent[curr]
+        }
+        return path
+    }
 }

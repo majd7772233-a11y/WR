@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,11 +17,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
@@ -39,10 +44,16 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsState()
     val profile by viewModel.userProfile.collectAsState()
     val showNoInternet by viewModel.showNoInternetDialog.collectAsState()
+    val isQuickMatchSearching by viewModel.isQuickMatchSearching.collectAsState()
     val language = settings.language
 
-    var showAiDifficultyPicker by remember { mutableStateOf(false) }
+    var showQuickMatchDialog by remember { mutableStateOf(false) }
+    var showAiDialog by remember { mutableStateOf(false) }
+    var showPassAndPlayDialog by remember { mutableStateOf(false) }
+
     var selectedAiDifficulty by remember { mutableStateOf(AIDifficulty.MEDIUM) }
+    var selectedAiMode by remember { mutableStateOf(GameMode.VS_AI) }
+    var selectedPassPlayMode by remember { mutableStateOf(GameMode.PASS_AND_PLAY) }
     var selectedWallsCount by remember { mutableStateOf(10) }
     var selectedTimeControl by remember { mutableStateOf(300) } // 5 min
 
@@ -77,6 +88,571 @@ fun HomeScreen(
                 }
             },
             containerColor = SurfaceCard
+        )
+    }
+
+    // Quick Match Searching Loading Dialog (1-3 seconds animation)
+    if (isQuickMatchSearching) {
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelQuickMatchSearch() },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Player1Primary,
+                        strokeWidth = 2.5.dp
+                    )
+                    Text(
+                        text = Strings.get("searching_opponent", language),
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = Strings.get("searching_opponent_desc", language),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = Player1Primary,
+                        trackColor = CellBorder
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.cancelQuickMatchSearch() }) {
+                    Text(text = Strings.get("cancel", language), color = DangerRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // 1. Quick Match Mode Selection Dialog
+    if (showQuickMatchDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuickMatchDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Player1Primary.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Quick Match",
+                            tint = Player1Primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Text(
+                        text = Strings.get("quick_match", language),
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = Strings.get("quick_match_sub", language),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+
+                    // Option 1: 1v1 Classic Quick Match
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                showQuickMatchDialog = false
+                                viewModel.onQuickMatchClicked(GameMode.QUICK_MATCH, bypassGlitch = false)
+                            }
+                            .border(1.dp, Player1Primary.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                        color = Color(0xFF0C4A6E).copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = Player1Primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = Strings.get("classic_mode", language),
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "1 vs 1 • " + Strings.get("quick_match", language),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // Option 2: 1v1 Race Quick Match
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                showQuickMatchDialog = false
+                                viewModel.onQuickMatchClicked(GameMode.RACE_MODE, bypassGlitch = false)
+                            }
+                            .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                        color = Color(0xFF451A03).copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = Strings.get("race_mode", language),
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = Strings.get("race_mode_sub", language),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // Option 3: 4 Players Quad Quick Match
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                showQuickMatchDialog = false
+                                viewModel.onQuickMatchClicked(GameMode.QUAD_MODE, bypassGlitch = false)
+                            }
+                            .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                        color = Color(0xFF064E3B).copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = null,
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = Strings.get("quad_mode", language),
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = Strings.get("quad_mode_sub", language),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQuickMatchDialog = false }) {
+                    Text(Strings.get("cancel", language), color = TextSecondary)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // 2. Play vs AI Configuration Dialog (Mode, Difficulty, Settings)
+    if (showAiDialog) {
+        AlertDialog(
+            onDismissRequest = { showAiDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF8B5CF6).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SmartToy,
+                            contentDescription = "AI Setup",
+                            tint = Color(0xFFA78BFA),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Text(
+                        text = Strings.get("ai_setup_title", language),
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Game Mode selection
+                    Text(
+                        text = Strings.get("select_game_mode", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            Triple(GameMode.VS_AI, Strings.get("classic_mode_short", language), "⚔️"),
+                            Triple(GameMode.RACE_MODE, Strings.get("race_mode_short", language), "🏁"),
+                            Triple(GameMode.QUAD_MODE, Strings.get("quad_mode_short", language), "🎯")
+                        ).forEach { (mode, label, icon) ->
+                            FilterChip(
+                                selected = selectedAiMode == mode,
+                                onClick = { selectedAiMode = mode },
+                                label = { Text("$icon $label", fontSize = 11.sp, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Difficulty selection
+                    Text(
+                        text = Strings.get("select_difficulty", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AIDifficulty.values().forEach { diff ->
+                            val isSelected = selectedAiDifficulty == diff
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedAiDifficulty = diff },
+                                label = {
+                                    Text(
+                                        text = when (diff) {
+                                            AIDifficulty.EASY -> "🟢 " + Strings.get("easy", language)
+                                            AIDifficulty.MEDIUM -> "🟡 " + Strings.get("medium", language)
+                                            AIDifficulty.HARD -> "🔴 " + Strings.get("hard", language)
+                                        },
+                                        fontSize = 11.sp,
+                                        maxLines = 1
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Walls Count (Selectable for all modes, default 10)
+                    Text(
+                        text = Strings.get("walls_count", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(5, 10, 15).forEach { walls ->
+                            FilterChip(
+                                selected = selectedWallsCount == walls,
+                                onClick = { selectedWallsCount = walls },
+                                label = { Text("$walls 🧱", maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    // Time Control
+                    Text(
+                        text = Strings.get("time_control", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(Pair(180, "3m"), Pair(300, "5m"), Pair(0, "∞")).forEach { (t, label) ->
+                            FilterChip(
+                                selected = selectedTimeControl == t,
+                                onClick = { selectedTimeControl = t },
+                                label = { Text(label, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showAiDialog = false
+                        if (selectedAiMode == GameMode.QUAD_MODE) {
+                            viewModel.startMatch(
+                                rules = GameRules(
+                                    wallsPerPlayer = selectedWallsCount,
+                                    timeLimitSeconds = selectedTimeControl,
+                                    aiDifficulty = selectedAiDifficulty,
+                                    mode = GameMode.QUAD_MODE
+                                ),
+                                player2Name = "Bot Alpha (Red)",
+                                player2IsAI = true,
+                                player3Name = "Bot Beta (Green)",
+                                player3IsAI = true,
+                                player4Name = "Bot Gamma (Yellow)",
+                                player4IsAI = true
+                            )
+                        } else {
+                            viewModel.startMatch(
+                                rules = GameRules(
+                                    wallsPerPlayer = selectedWallsCount,
+                                    timeLimitSeconds = selectedTimeControl,
+                                    aiDifficulty = selectedAiDifficulty,
+                                    mode = selectedAiMode
+                                ),
+                                player2Name = if (selectedAiMode == GameMode.RACE_MODE) "AI Racer" else "AI Bot",
+                                player2IsAI = true
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF8B5CF6),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text(text = Strings.get("start_game", language), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAiDialog = false }) {
+                    Text(Strings.get("cancel", language), color = TextSecondary)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // 3. Pass & Play (Same Device) Configuration Dialog
+    if (showPassAndPlayDialog) {
+        AlertDialog(
+            onDismissRequest = { showPassAndPlayDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Player2Primary.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhoneAndroid,
+                            contentDescription = "Pass & Play",
+                            tint = Player2Primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Text(
+                        text = Strings.get("pass_and_play", language),
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = Strings.get("select_game_mode", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            Triple(GameMode.PASS_AND_PLAY, Strings.get("classic_mode_short", language), "⚔️"),
+                            Triple(GameMode.RACE_MODE, Strings.get("race_mode_short", language), "🏁"),
+                            Triple(GameMode.QUAD_MODE, Strings.get("quad_mode_short", language), "🎯")
+                        ).forEach { (mode, label, icon) ->
+                            FilterChip(
+                                selected = selectedPassPlayMode == mode,
+                                onClick = { selectedPassPlayMode = mode },
+                                label = { Text("$icon $label", fontSize = 11.sp, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = Strings.get("walls_count", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(5, 10, 15).forEach { walls ->
+                            FilterChip(
+                                selected = selectedWallsCount == walls,
+                                onClick = { selectedWallsCount = walls },
+                                label = { Text("$walls 🧱", maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = Strings.get("time_control", language),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(Pair(180, "3m"), Pair(300, "5m"), Pair(0, "∞")).forEach { (t, label) ->
+                            FilterChip(
+                                selected = selectedTimeControl == t,
+                                onClick = { selectedTimeControl = t },
+                                label = { Text(label, maxLines = 1) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPassAndPlayDialog = false
+                        if (selectedPassPlayMode == GameMode.QUAD_MODE) {
+                            viewModel.startMatch(
+                                rules = GameRules(
+                                    wallsPerPlayer = selectedWallsCount,
+                                    timeLimitSeconds = selectedTimeControl,
+                                    mode = GameMode.QUAD_MODE
+                                ),
+                                player2Name = "Player 2 (Red)",
+                                player2IsAI = false,
+                                player3Name = "Player 3 (Green)",
+                                player3IsAI = false,
+                                player4Name = "Player 4 (Yellow)",
+                                player4IsAI = false
+                            )
+                        } else {
+                            viewModel.startMatch(
+                                rules = GameRules(
+                                    wallsPerPlayer = selectedWallsCount,
+                                    timeLimitSeconds = selectedTimeControl,
+                                    mode = selectedPassPlayMode
+                                ),
+                                player2Name = "Player 2",
+                                player2IsAI = false
+                            )
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Player2Primary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text(text = Strings.get("start_game", language), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPassAndPlayDialog = false }) {
+                    Text(Strings.get("cancel", language), color = TextSecondary)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
         )
     }
 
@@ -134,9 +710,9 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .widthIn(max = 680.dp)
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(vertical = 16.dp)
+                    .padding(horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(vertical = 14.dp)
             ) {
             // Header: Branding + Language Switcher + Settings
             item {
@@ -168,36 +744,28 @@ fun HomeScreen(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Language toggle button
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = SurfaceCard,
+                        // About App Icon
+                        IconButton(
+                            onClick = { viewModel.navigateTo(ScreenState.ABOUT) },
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    val nextLang = if (language == AppLanguage.ENGLISH) AppLanguage.ARABIC else AppLanguage.ENGLISH
-                                    viewModel.setLanguage(nextLang)
-                                }
-                                .border(1.dp, CellBorder, RoundedCornerShape(12.dp))
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Player1Primary.copy(alpha = 0.15f))
+                                .border(1.dp, Player1Primary.copy(alpha = 0.4f), CircleShape)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = if (language == AppLanguage.ENGLISH) "🌐 العربية" else "🌐 EN",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = Strings.get("about", language),
+                                tint = Player1Primary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
-                        // Settings Icon
+                        // Settings Icon (Full-screen)
                         IconButton(
-                            onClick = { viewModel.setShowSettingsDialog(true) },
+                            onClick = { viewModel.navigateTo(ScreenState.SETTINGS) },
                             modifier = Modifier
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(SurfaceCard)
                                 .border(1.dp, CellBorder, CircleShape)
@@ -205,7 +773,8 @@ fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = Strings.get("settings", language),
-                                tint = TextPrimary
+                                tint = TextPrimary,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -297,8 +866,10 @@ fun HomeScreen(
                     badgeColor = Player1Primary,
                     icon = Icons.Default.Bolt,
                     gradientColors = listOf(Color(0xFF0C4A6E), SurfaceCard),
-                    onClick = {
-                        viewModel.onQuickMatchClicked()
+                    onClick = { showQuickMatchDialog = true },
+                    onLongPress = {
+                        // Secret Glitch: Hold long-press to bypass network restrictions
+                        viewModel.onQuickMatchClicked(bypassGlitch = true)
                     }
                 )
             }
@@ -312,11 +883,15 @@ fun HomeScreen(
                     badgeColor = Color(0xFF10B981),
                     icon = Icons.Default.Public,
                     gradientColors = listOf(Color(0xFF064E3B), SurfaceCard),
-                    onClick = { viewModel.onPlayOnlineClicked() }
+                    onClick = { viewModel.onPlayOnlineClicked(bypassGlitch = false) },
+                    onLongPress = {
+                        // Secret Glitch: Hold long-press to bypass network restrictions
+                        viewModel.onPlayOnlineClicked(bypassGlitch = true)
+                    }
                 )
             }
 
-            // 3. Play a Friend (Room Code)
+            // 3. Play a Friend (Room Code / P2P)
             item {
                 MenuGameCard(
                     title = Strings.get("play_friend", language),
@@ -331,119 +906,18 @@ fun HomeScreen(
 
             // 4. Play the AI (Practice Mode)
             item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .border(1.dp, CellBorder, RoundedCornerShape(20.dp))
-                        .background(
-                            Brush.horizontalGradient(listOf(Color(0xFF4C1D95), SurfaceCard))
-                        )
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF8B5CF6).copy(alpha = 0.2f))
-                                    .border(1.5.dp, Color(0xFF8B5CF6), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SmartToy,
-                                    contentDescription = "AI",
-                                    tint = Color(0xFFA78BFA)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = Strings.get("play_ai", language),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = Strings.get("play_ai_sub", language),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-
-                        // Play Button
-                        Button(
-                            onClick = {
-                                viewModel.startMatch(
-                                    rules = GameRules(
-                                        wallsPerPlayer = selectedWallsCount,
-                                        timeLimitSeconds = selectedTimeControl,
-                                        aiDifficulty = selectedAiDifficulty,
-                                        mode = GameMode.VS_AI
-                                    ),
-                                    player2Name = "WallBot (${selectedAiDifficulty.name})",
-                                    player2IsAI = true
-                                )
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF8B5CF6),
-                                contentColor = Color.White
-                            ),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(text = "PLAY", fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Difficulty selector tabs
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AIDifficulty.values().forEach { diff ->
-                            val isSelected = selectedAiDifficulty == diff
-                            val tabColor = if (isSelected) Color(0xFF8B5CF6) else SurfaceCard
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(tabColor)
-                                    .border(
-                                        1.dp,
-                                        if (isSelected) Color(0xFFA78BFA) else CellBorder,
-                                        RoundedCornerShape(10.dp)
-                                    )
-                                    .clickable { selectedAiDifficulty = diff }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = when (diff) {
-                                        AIDifficulty.EASY -> Strings.get("easy", language)
-                                        AIDifficulty.MEDIUM -> Strings.get("medium", language)
-                                        AIDifficulty.HARD -> Strings.get("hard", language)
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) Color.White else TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
+                MenuGameCard(
+                    title = Strings.get("play_ai", language),
+                    subtitle = Strings.get("play_ai_sub", language),
+                    badge = "AI BOT",
+                    badgeColor = Color(0xFF8B5CF6),
+                    icon = Icons.Default.SmartToy,
+                    gradientColors = listOf(Color(0xFF4C1D95), SurfaceCard),
+                    onClick = { showAiDialog = true }
+                )
             }
 
-            // 5. Pass & Play (Local 2 Players)
+            // 5. Pass & Play (Local Multiplayer)
             item {
                 MenuGameCard(
                     title = Strings.get("pass_and_play", language),
@@ -452,17 +926,7 @@ fun HomeScreen(
                     badgeColor = Player2Primary,
                     icon = Icons.Default.PhoneAndroid,
                     gradientColors = listOf(Color(0xFF831843), SurfaceCard),
-                    onClick = {
-                        viewModel.startMatch(
-                            rules = GameRules(
-                                wallsPerPlayer = selectedWallsCount,
-                                timeLimitSeconds = selectedTimeControl,
-                                mode = GameMode.PASS_AND_PLAY
-                            ),
-                            player2Name = "Player 2",
-                            player2IsAI = false
-                        )
-                    }
+                    onClick = { showPassAndPlayDialog = true }
                 )
             }
 
@@ -491,22 +955,34 @@ private fun MenuGameCard(
     badgeColor: Color,
     icon: ImageVector,
     gradientColors: List<Color>,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
-            .border(1.dp, CellBorder, RoundedCornerShape(20.dp)),
-        shape = RoundedCornerShape(20.dp),
+            .clip(RoundedCornerShape(18.dp))
+            .then(
+                if (onLongPress != null) {
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { onClick() },
+                            onLongPress = { onLongPress() }
+                        )
+                    }
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
+            .border(1.dp, CellBorder, RoundedCornerShape(18.dp)),
+        shape = RoundedCornerShape(18.dp),
         color = SurfaceCard
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Brush.horizontalGradient(gradientColors))
-                .padding(16.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -515,11 +991,12 @@ private fun MenuGameCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
                             .background(badgeColor.copy(alpha = 0.2f))
                             .border(1.5.dp, badgeColor, CircleShape),
@@ -528,45 +1005,58 @@ private fun MenuGameCard(
                         Icon(
                             imageVector = icon,
                             contentDescription = title,
-                            tint = badgeColor
+                            tint = badgeColor,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
 
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Text(
                                 text = title,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = TextPrimary
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(badgeColor.copy(alpha = 0.2f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
                             ) {
                                 Text(
                                     text = badge,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Black,
                                     color = badgeColor,
-                                    fontSize = 9.sp
+                                    fontSize = 8.5.sp,
+                                    maxLines = 1
                                 )
                             }
                         }
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
+                Spacer(modifier = Modifier.width(6.dp))
+
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = "Go",
-                    tint = TextSecondary
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }

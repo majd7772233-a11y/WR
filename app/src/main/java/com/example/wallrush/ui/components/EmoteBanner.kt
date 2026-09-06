@@ -34,31 +34,63 @@ fun EmoteBanner(
 ) {
     AnimatedVisibility(
         visible = activeEmote != null,
-        enter = scaleIn() + fadeIn(),
-        exit = scaleOut() + fadeOut(),
+        enter = scaleIn(initialScale = 0.8f) + fadeIn(),
+        exit = scaleOut(targetScale = 0.8f) + fadeOut(),
         modifier = modifier
     ) {
         if (activeEmote != null) {
+            val isPureEmoji = activeEmote.emoji.length <= 6 && activeEmote.emoji.none { it.isLetterOrDigit() }
+            val isP1 = activeEmote.player == PlayerId.PLAYER_1
+            val accentColor = if (isP1) Color(0xFF00E5FF) else Color(0xFFFF2A85)
+
             Box(
                 modifier = Modifier
-                    .shadow(12.dp, RoundedCornerShape(20.dp))
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(SurfaceCard)
-                    .border(1.5.dp, CellBorder, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .shadow(16.dp, RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(SurfaceCard.copy(alpha = 0.95f))
+                    .border(1.5.dp, accentColor.copy(alpha = 0.8f), RoundedCornerShape(22.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(text = activeEmote.emoji, fontSize = 28.sp)
-                    Text(
-                        text = activeEmote.playerName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                if (isPureEmoji) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(text = activeEmote.emoji, fontSize = 34.sp)
+                        Column {
+                            Text(
+                                text = activeEmote.playerName,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor
+                            )
+                        }
+                    }
+                } else {
+                    // Chat speech bubble layout
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.widthIn(max = 280.dp)
+                    ) {
+                        Text(text = "💬", fontSize = 22.sp)
+                        Column {
+                            Text(
+                                text = activeEmote.playerName,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = activeEmote.emoji,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -68,6 +68,8 @@ fun WallRushApp(viewModel: WallRushViewModel) {
                         ScreenState.REPLAY -> ReplayScreen(viewModel = viewModel)
                         ScreenState.LEADERBOARD -> LeaderboardScreen(viewModel = viewModel)
                         ScreenState.PROFILE -> ProfileScreen(viewModel = viewModel)
+                        ScreenState.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                        ScreenState.ABOUT -> AboutScreen(viewModel = viewModel)
                     }
                 }
 
