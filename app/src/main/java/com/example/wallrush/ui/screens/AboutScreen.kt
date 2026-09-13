@@ -578,23 +578,23 @@ private fun Interactive3DQuoridorCanvas(
             center = Offset(cx, cy)
         )
 
-        // 3D Isometric projection math
-        fun project3D(x: Float, y: Float, z: Float): Offset {
-            // Rotate around Z axis (yaw)
+        // 3D Isometric projection math with camera depth for Painter's algorithm
+        class Point3D(val x: Float, val y: Float, val z: Float) {
             val cosA = cos(totalYaw)
             val sinA = sin(totalYaw)
             val rotX = x * cosA - y * sinA
-            val rotY = x * sinA + y * cosA
+            val rotY = x * sinA + y * cosA // Camera depth
 
-            // Tilt with pitch
             val projX = cx + rotX
             val projY = cy + (rotY * sin(pitch)) - (z * cos(pitch))
-            return Offset(projX, projY)
+            val offset = Offset(projX, projY)
         }
 
-        // 1. Draw 3D Base Slab Extrusion
-        val slabSize = min(w, h) * 0.38f
-        val slabDepth = 22f
+        fun project3D(x: Float, y: Float, z: Float): Point3D = Point3D(x, y, z)
+
+        // 1. Draw 3D Base Slab Extrusion with proper back-to-front face ordering
+        val slabSize = min(w, h) * 0.32f
+        val slabDepth = 20f
 
         val slabCornersTop = listOf(
             project3D(-slabSize, -slabSize, 0f),
@@ -610,49 +610,52 @@ private fun Interactive3DQuoridorCanvas(
             project3D(-slabSize, slabSize, -slabDepth)
         )
 
-        // Draw slab side faces
+        // Draw slab bottom and front/visible sides
         for (i in 0..3) {
             val next = (i + 1) % 4
+            val edgeMidDepth = (slabCornersTop[i].rotY + slabCornersTop[next].rotY) / 2f
+            // Only draw faces angled toward camera (positive depth) or draw backfaces first
             val sidePath = Path().apply {
-                moveTo(slabCornersTop[i].x, slabCornersTop[i].y)
-                lineTo(slabCornersTop[next].x, slabCornersTop[next].y)
-                lineTo(slabCornersBottom[next].x, slabCornersBottom[next].y)
-                lineTo(slabCornersBottom[i].x, slabCornersBottom[i].y)
+                moveTo(slabCornersTop[i].offset.x, slabCornersTop[i].offset.y)
+                lineTo(slabCornersTop[next].offset.x, slabCornersTop[next].offset.y)
+                lineTo(slabCornersBottom[next].offset.x, slabCornersBottom[next].offset.y)
+                lineTo(slabCornersBottom[i].offset.x, slabCornersBottom[i].offset.y)
                 close()
             }
+            val shade = if (edgeMidDepth > 0) 0.95f else 0.65f
             drawPath(
                 path = sidePath,
-                color = Color(0xFF0F172A).copy(alpha = 0.95f)
+                color = Color(0xFF0F172A).copy(alpha = shade)
             )
             drawPath(
                 path = sidePath,
-                color = Color(0xFF38BDF8).copy(alpha = 0.3f),
+                color = Color(0xFF38BDF8).copy(alpha = 0.25f),
                 style = Stroke(1.2f)
             )
         }
 
         // Draw slab top face
         val topPath = Path().apply {
-            moveTo(slabCornersTop[0].x, slabCornersTop[0].y)
-            for (i in 1..3) lineTo(slabCornersTop[i].x, slabCornersTop[i].y)
+            moveTo(slabCornersTop[0].offset.x, slabCornersTop[0].offset.y)
+            for (i in 1..3) lineTo(slabCornersTop[i].offset.x, slabCornersTop[i].offset.y)
             close()
         }
         drawPath(
             path = topPath,
             brush = Brush.linearGradient(
-                listOf(Color(0xFF1E293B), Color(0xFF0B132B))
+                listOf(Color(0xFF1E293B), Color(0xFF0F172A))
             )
         )
         drawPath(
             path = topPath,
-            color = Color(0xFF38BDF8),
+            color = Color(0xFF38BDF8).copy(alpha = 0.8f),
             style = Stroke(2f)
         )
 
-        // 2. Draw 3D Quoridor Grid Cells (5x5 visual model)
-        val gridStep = (slabSize * 1.8f) / 5f
-        val halfSlab = slabSize * 0.9f
-        val cellSize = gridStep * 0.78f
+        // 2. Draw 3D Quoridor Grid Cells (5x5 model)
+        val gridStep = (slabSize * 1.85f) / 5f
+        val halfSlab = slabSize * 0.92f
+        val cellSize = gridStep * 0.80f
 
         for (gx in 0 until 5) {
             for (gy in 0 until 5) {
@@ -665,16 +668,18 @@ private fun Interactive3DQuoridorCanvas(
                 val p3 = project3D(ox, oy + cellSize, 1f)
 
                 val cellPath = Path().apply {
-                    moveTo(p0.x, p0.y)
-                    lineTo(p1.x, p1.y)
-                    lineTo(p2.x, p2.y)
-                    lineTo(p3.x, p3.y)
+                    moveTo(p0.offset.x, p0.offset.y)
+                    lineTo(p1.offset.x, p1.offset.y)
+                    lineTo(p2.offset.x, p2.offset.y)
+                    lineTo(p3.offset.x, p3.offset.y)
                     close()
                 }
 
                 val isGoal1 = gy == 0
                 val isGoal2 = gy == 4
+                val isCenter = gx == 2 && gy == 2
                 val cellColor = when {
+                    isCenter -> GoldRating.copy(alpha = 0.25f)
                     isGoal1 -> Color(0xFF0284C7).copy(alpha = 0.35f)
                     isGoal2 -> Color(0xFFE11D48).copy(alpha = 0.35f)
                     (gx + gy) % 2 == 0 -> Color(0xFF1E293B)
@@ -682,115 +687,151 @@ private fun Interactive3DQuoridorCanvas(
                 }
 
                 drawPath(path = cellPath, color = cellColor)
-                drawPath(path = cellPath, color = Color(0xFF334155), style = Stroke(1f))
+                drawPath(path = cellPath, color = if (isCenter) GoldRating.copy(alpha = 0.6f) else Color(0xFF334155), style = Stroke(1f))
             }
         }
 
-        // 3. Draw 3D Levitation Pawns (P1 Cyan, P2 Crimson)
-        // P1 Pawn (Top player heading down)
-        val p1Pos = project3D(-gridStep * 0.5f, -gridStep * 1.0f, 15f + levitation)
-        val p1Shadow = project3D(-gridStep * 0.5f, -gridStep * 1.0f, 1f)
-
-        // Drop shadow
-        drawCircle(
-            color = Color(0x66000000),
-            radius = 16f,
-            center = p1Shadow
-        )
-        // Pawn Glow
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(Color(0xFF38BDF8).copy(alpha = 0.75f), Color.Transparent),
-                center = p1Pos,
-                radius = 28f
-            ),
-            radius = 28f,
-            center = p1Pos
-        )
-        // Sphere body
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White, Color(0xFF38BDF8), Color(0xFF0284C7)),
-                center = Offset(p1Pos.x - 4f, p1Pos.y - 4f),
-                radius = 14f
-            ),
-            radius = 14f,
-            center = p1Pos
-        )
-
-        // P2 Pawn (Bottom player heading up)
-        val p2Pos = project3D(gridStep * 0.5f, gridStep * 1.0f, 15f - levitation)
-        val p2Shadow = project3D(gridStep * 0.5f, gridStep * 1.0f, 1f)
-
-        // Drop shadow
-        drawCircle(
-            color = Color(0x66000000),
-            radius = 16f,
-            center = p2Shadow
-        )
-        // Pawn Glow
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(Color(0xFFF43F5E).copy(alpha = 0.75f), Color.Transparent),
-                center = p2Pos,
-                radius = 28f
-            ),
-            radius = 28f,
-            center = p2Pos
-        )
-        // Sphere body
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White, Color(0xFFFB7185), Color(0xFFBE123C)),
-                center = Offset(p2Pos.x - 4f, p2Pos.y - 4f),
-                radius = 14f
-            ),
-            radius = 14f,
-            center = p2Pos
-        )
-
-        // 4. Draw 3D Elevated Walls on the board
-        fun draw3DWall(wx: Float, wy: Float, isHorizontal: Boolean, color: Color) {
-            val wallW = if (isHorizontal) gridStep * 1.7f else 12f
-            val wallL = if (isHorizontal) 12f else gridStep * 1.7f
-            val wallH = 24f
-
-            val b0 = project3D(wx - wallW / 2f, wy - wallL / 2f, 1f)
-            val b1 = project3D(wx + wallW / 2f, wy - wallL / 2f, 1f)
-            val b2 = project3D(wx + wallW / 2f, wy + wallL / 2f, 1f)
-            val b3 = project3D(wx - wallW / 2f, wy + wallL / 2f, 1f)
-
-            val t0 = project3D(wx - wallW / 2f, wy - wallL / 2f, 1f + wallH)
-            val t1 = project3D(wx + wallW / 2f, wy - wallL / 2f, 1f + wallH)
-            val t2 = project3D(wx + wallW / 2f, wy + wallL / 2f, 1f + wallH)
-            val t3 = project3D(wx - wallW / 2f, wy + wallL / 2f, 1f + wallH)
-
-            // Top face
-            val topP = Path().apply {
-                moveTo(t0.x, t0.y)
-                lineTo(t1.x, t1.y)
-                lineTo(t2.x, t2.y)
-                lineTo(t3.x, t3.y)
-                close()
-            }
-            drawPath(path = topP, color = color.copy(alpha = wallGlowAlpha))
-            drawPath(path = topP, color = Color.White, style = Stroke(1.2f))
-
-            // Side faces
-            val s0 = Path().apply {
-                moveTo(t0.x, t0.y)
-                lineTo(t1.x, t1.y)
-                lineTo(b1.x, b1.y)
-                lineTo(b0.x, b0.y)
-                close()
-            }
-            drawPath(path = s0, color = color.copy(alpha = 0.75f))
-            drawPath(path = s0, color = color, style = Stroke(1f))
+        // 3. Collect 3D entities (Pawns & Walls) and sort by Depth (rotY) for Realistic Painter's rendering!
+        abstract class RenderEntity(val depth: Float) {
+            abstract fun render()
         }
 
-        // Place 2 tactical 3D neon walls
-        draw3DWall(wx = 0f, wy = -gridStep * 0.3f, isHorizontal = true, color = Color(0xFFF59E0B))
-        draw3DWall(wx = -gridStep * 0.8f, wy = gridStep * 0.4f, isHorizontal = false, color = Color(0xFF10B981))
+        val renderList = mutableListOf<RenderEntity>()
+
+        // Entity A: Pawn 1 (Cyan)
+        val p1BaseX = -gridStep * 0.5f
+        val p1BaseY = -gridStep * 1.0f
+        val p1Z = 12f + levitation
+        val p1Point = project3D(p1BaseX, p1BaseY, p1Z)
+        val p1ShadowPoint = project3D(p1BaseX, p1BaseY, 1f)
+
+        // Always draw shadows on board first
+        drawCircle(
+            color = Color(0x77000000),
+            radius = 15f,
+            center = p1ShadowPoint.offset
+        )
+
+        val p2BaseX = gridStep * 0.5f
+        val p2BaseY = gridStep * 1.0f
+        val p2Z = 12f - levitation
+        val p2Point = project3D(p2BaseX, p2BaseY, p2Z)
+        val p2ShadowPoint = project3D(p2BaseX, p2BaseY, 1f)
+
+        drawCircle(
+            color = Color(0x77000000),
+            radius = 15f,
+            center = p2ShadowPoint.offset
+        )
+
+        renderList.add(object : RenderEntity(p1Point.rotY) {
+            override fun render() {
+                // Pawn 1 Glow & 3D Sphere Body
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF38BDF8).copy(alpha = 0.7f), Color.Transparent),
+                        center = p1Point.offset,
+                        radius = 26f
+                    ),
+                    radius = 26f,
+                    center = p1Point.offset
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White, Color(0xFF38BDF8), Color(0xFF0284C7)),
+                        center = Offset(p1Point.offset.x - 3f, p1Point.offset.y - 3f),
+                        radius = 14f
+                    ),
+                    radius = 13f,
+                    center = p1Point.offset
+                )
+            }
+        })
+
+        renderList.add(object : RenderEntity(p2Point.rotY) {
+            override fun render() {
+                // Pawn 2 Glow & 3D Sphere Body
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFF43F5E).copy(alpha = 0.7f), Color.Transparent),
+                        center = p2Point.offset,
+                        radius = 26f
+                    ),
+                    radius = 26f,
+                    center = p2Point.offset
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White, Color(0xFFFB7185), Color(0xFFBE123C)),
+                        center = Offset(p2Point.offset.x - 3f, p2Point.offset.y - 3f),
+                        radius = 14f
+                    ),
+                    radius = 13f,
+                    center = p2Point.offset
+                )
+            }
+        })
+
+        // Entity: 3D Walls with all 4 extruded side faces
+        fun addWallEntity(wx: Float, wy: Float, isHorizontal: Boolean, color: Color) {
+            val wallW = if (isHorizontal) gridStep * 1.6f else 10f
+            val wallL = if (isHorizontal) 10f else gridStep * 1.6f
+            val wallH = 22f
+
+            val centerPt = project3D(wx, wy, wallH / 2f)
+
+            renderList.add(object : RenderEntity(centerPt.rotY) {
+                override fun render() {
+                    val b0 = project3D(wx - wallW / 2f, wy - wallL / 2f, 1f)
+                    val b1 = project3D(wx + wallW / 2f, wy - wallL / 2f, 1f)
+                    val b2 = project3D(wx + wallW / 2f, wy + wallL / 2f, 1f)
+                    val b3 = project3D(wx - wallW / 2f, wy + wallL / 2f, 1f)
+
+                    val t0 = project3D(wx - wallW / 2f, wy - wallL / 2f, 1f + wallH)
+                    val t1 = project3D(wx + wallW / 2f, wy - wallL / 2f, 1f + wallH)
+                    val t2 = project3D(wx + wallW / 2f, wy + wallL / 2f, 1f + wallH)
+                    val t3 = project3D(wx - wallW / 2f, wy + wallL / 2f, 1f + wallH)
+
+                    val corners = listOf(b0, b1, b2, b3)
+                    val topCorners = listOf(t0, t1, t2, t3)
+
+                    // Draw 4 extruded side faces
+                    for (i in 0..3) {
+                        val next = (i + 1) % 4
+                        val sideP = Path().apply {
+                            moveTo(topCorners[i].offset.x, topCorners[i].offset.y)
+                            lineTo(topCorners[next].offset.x, topCorners[next].offset.y)
+                            lineTo(corners[next].offset.x, corners[next].offset.y)
+                            lineTo(corners[i].offset.x, corners[i].offset.y)
+                            close()
+                        }
+                        val midD = (corners[i].rotY + corners[next].rotY) / 2f
+                        val sideAlpha = if (midD > 0) 0.85f else 0.55f
+                        drawPath(path = sideP, color = color.copy(alpha = sideAlpha))
+                        drawPath(path = sideP, color = Color.White.copy(alpha = 0.3f), style = Stroke(0.8f))
+                    }
+
+                    // Top face
+                    val topP = Path().apply {
+                        moveTo(t0.offset.x, t0.offset.y)
+                        lineTo(t1.offset.x, t1.offset.y)
+                        lineTo(t2.offset.x, t2.offset.y)
+                        lineTo(t3.offset.x, t3.offset.y)
+                        close()
+                    }
+                    drawPath(path = topP, color = color.copy(alpha = wallGlowAlpha))
+                    drawPath(path = topP, color = Color.White, style = Stroke(1.2f))
+                }
+            })
+        }
+
+        // Add 2 tactical walls
+        addWallEntity(wx = 0f, wy = -gridStep * 0.3f, isHorizontal = true, color = Color(0xFFF59E0B))
+        addWallEntity(wx = -gridStep * 0.8f, wy = gridStep * 0.4f, isHorizontal = false, color = Color(0xFF10B981))
+
+        // Sort all entities by camera depth: Far objects first (smallest rotY), near objects last (largest rotY)
+        renderList.sortBy { it.depth }
+        renderList.forEach { it.render() }
     }
 }
 

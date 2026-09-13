@@ -187,7 +187,7 @@ fun GameBoardCanvas(
 
                     val bgCellColor = when {
                         isQuadCenterCell -> GoldRating.copy(alpha = 0.25f + (glowAlpha * 0.15f))
-                        isRaceFinishCell -> if ((r + c) % 2 == 0) RaceFinishGreen.copy(alpha = 0.40f) else RaceCheckeredWhite.copy(alpha = 0.22f)
+                        isRaceFinishCell -> if ((r + c) % 2 == 0) SuccessGreen.copy(alpha = 0.48f) else SuccessGreen.copy(alpha = 0.30f)
                         isRaceStartCell -> RaceStartGreen.copy(alpha = 0.22f)
                         isQuadMode && r == 8 && c == 4 -> theme.p1Primary.copy(alpha = 0.18f) // P1 entry
                         isQuadMode && r == 0 && c == 4 -> theme.p2Primary.copy(alpha = 0.18f) // P2 entry
@@ -209,7 +209,7 @@ fun GameBoardCanvas(
                     // Cell border
                     val cellBorderColor = when {
                         isQuadCenterCell -> GoldRating
-                        isRaceFinishCell -> RaceFinishGreen
+                        isRaceFinishCell -> SuccessGreen
                         isRaceStartCell -> RaceStartGreen.copy(alpha = 0.6f)
                         !isQuadMode && !isRaceMode && isP1GoalRow -> theme.p1Primary.copy(alpha = 0.45f)
                         !isQuadMode && !isRaceMode && isP2GoalRow -> theme.p2Primary.copy(alpha = 0.45f)
@@ -223,6 +223,23 @@ fun GameBoardCanvas(
                         cornerRadius = CornerRadius(cellRadius, cellRadius),
                         style = Stroke(width = if (isQuadCenterCell || isRaceFinishCell) 2.2f else 1.2f)
                     )
+
+                    // Special indicator inside Race Finish cells (checkered flag green dot)
+                    if (isRaceFinishCell) {
+                        val centerCellX = cellLeft + (cellSize / 2f)
+                        val centerCellY = cellTop + (cellSize / 2f)
+                        drawCircle(
+                            color = SuccessGreen.copy(alpha = glowAlpha * 0.7f),
+                            radius = cellSize * 0.22f * pulseScale,
+                            center = Offset(centerCellX, centerCellY),
+                            style = Stroke(width = 1.5f)
+                        )
+                        drawCircle(
+                            color = SuccessGreen,
+                            radius = cellSize * 0.12f,
+                            center = Offset(centerCellX, centerCellY)
+                        )
+                    }
 
                     // Special indicator inside Quad Center cell (4,4)
                     if (isQuadCenterCell) {

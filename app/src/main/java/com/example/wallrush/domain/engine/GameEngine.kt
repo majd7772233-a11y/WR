@@ -21,7 +21,7 @@ object GameEngine {
         roomCode: String = generateRoomCode()
     ): GameState {
         val initialTime = if (rules.timeLimitSeconds > 0) rules.timeLimitSeconds * 1000L else Long.MAX_VALUE
-        val wallsCount = if (rules.mode == GameMode.QUAD_MODE) 5 else rules.wallsPerPlayer
+        val wallsCount = rules.wallsPerPlayer
 
         val p1Start = when (rules.mode) {
             GameMode.RACE_MODE -> Position(3, 8)

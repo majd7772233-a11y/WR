@@ -38,6 +38,8 @@ fun TutorialScreen(
 
     var currentStepIndex by remember { mutableStateOf(0) }
 
+    val totalSteps = 9
+
     // Tutorial state per step
     val tutorialStates = remember {
         listOf(
@@ -73,6 +75,38 @@ fun TutorialScreen(
                 player1 = PlayerState(PlayerId.PLAYER_1, "You", 0, Position(4, 1), remainingWalls = 5),
                 player2 = PlayerState(PlayerId.PLAYER_2, "Bot", 1, Position(2, 5), remainingWalls = 5),
                 walls = emptyList()
+            ),
+            // Step 6: Speed Race Mode (Sprint to green finish line!)
+            GameState(
+                player1 = PlayerState(PlayerId.PLAYER_1, "You (Blue)", 0, Position(3, 8), remainingWalls = 3),
+                player2 = PlayerState(PlayerId.PLAYER_2, "Rival (Red)", 1, Position(5, 8), remainingWalls = 3),
+                rules = GameRules(mode = GameMode.RACE_MODE, wallsPerPlayer = 3),
+                walls = listOf(
+                    Wall(x = 4, y = 5, orientation = WallOrientation.HORIZONTAL, placedBy = PlayerId.PLAYER_2)
+                )
+            ),
+            // Step 7: Quad Mode (4 players race to center (4,4))
+            GameState(
+                player1 = PlayerState(PlayerId.PLAYER_1, "You (Blue)", 0, Position(4, 7), remainingWalls = 4),
+                player2 = PlayerState(PlayerId.PLAYER_2, "P2 (Red)", 1, Position(4, 1), remainingWalls = 4),
+                player3 = PlayerState(PlayerId.PLAYER_3, "P3 (Green)", 2, Position(1, 4), remainingWalls = 4),
+                player4 = PlayerState(PlayerId.PLAYER_4, "P4 (Yellow)", 3, Position(7, 4), remainingWalls = 4),
+                rules = GameRules(mode = GameMode.QUAD_MODE, wallsPerPlayer = 4),
+                walls = listOf(
+                    Wall(x = 3, y = 3, orientation = WallOrientation.VERTICAL, placedBy = PlayerId.PLAYER_2)
+                )
+            ),
+            // Step 8: Offline Local P2P Showcase State
+            GameState(
+                player1 = PlayerState(PlayerId.PLAYER_1, "Host (You)", 0, Position(4, 6), remainingWalls = 5),
+                player2 = PlayerState(PlayerId.PLAYER_2, "Nearby Friend", 1, Position(4, 2), remainingWalls = 5),
+                walls = emptyList()
+            ),
+            // Step 9: Daily Quests & Achievements
+            GameState(
+                player1 = PlayerState(PlayerId.PLAYER_1, "Master Tactician", 0, Position(4, 1), remainingWalls = 5),
+                player2 = PlayerState(PlayerId.PLAYER_2, "Champion Bot", 1, Position(2, 4), remainingWalls = 5),
+                walls = emptyList()
             )
         )
     }
@@ -85,7 +119,11 @@ fun TutorialScreen(
         Strings.get("tut_step_2_title", language),
         Strings.get("tut_step_3_title", language),
         Strings.get("tut_step_4_title", language),
-        Strings.get("tut_step_5_title", language)
+        Strings.get("tut_step_5_title", language),
+        Strings.get("tut_step_6_title", language),
+        Strings.get("tut_step_7_title", language),
+        Strings.get("tut_step_8_title", language),
+        Strings.get("tut_step_9_title", language)
     )
 
     val stepDescriptions = listOf(
@@ -93,7 +131,11 @@ fun TutorialScreen(
         Strings.get("tut_step_2_desc", language),
         Strings.get("tut_step_3_desc", language),
         Strings.get("tut_step_4_desc", language),
-        Strings.get("tut_step_5_desc", language)
+        Strings.get("tut_step_5_desc", language),
+        Strings.get("tut_step_6_desc", language),
+        Strings.get("tut_step_7_desc", language),
+        Strings.get("tut_step_8_desc", language),
+        Strings.get("tut_step_9_desc", language)
     )
 
     val legalMoves = RuleEngine.getLegalMoves(localTutState, PlayerId.PLAYER_1)
@@ -153,7 +195,7 @@ fun TutorialScreen(
                             color = Player1Primary
                         )
                         Text(
-                            text = "${currentStepIndex + 1}/5",
+                            text = "${currentStepIndex + 1}/$totalSteps",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = TextSecondary
@@ -196,7 +238,7 @@ fun TutorialScreen(
                     },
                     onPawnClicked = {},
                     onWallSlotClicked = { x, y ->
-                        if (currentStepIndex == 1) { // Wall placement step
+                        if (currentStepIndex in listOf(1, 3, 5, 6)) { // Wall placement steps
                             val wall = Wall(x = x, y = y, orientation = WallOrientation.HORIZONTAL, placedBy = PlayerId.PLAYER_1)
                             if (RuleEngine.isWallPlacementLegal(localTutState, wall, PlayerId.PLAYER_1)) {
                                 localTutState = GameEngine.placeWall(localTutState, wall, PlayerId.PLAYER_1)
@@ -229,7 +271,7 @@ fun TutorialScreen(
                     Text(text = Strings.get("step_prev", language))
                 }
 
-                if (currentStepIndex < 4) {
+                if (currentStepIndex < totalSteps - 1) {
                     Button(
                         onClick = { currentStepIndex += 1 },
                         shape = RoundedCornerShape(12.dp),

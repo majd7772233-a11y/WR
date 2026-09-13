@@ -21,8 +21,12 @@ import com.example.wallrush.domain.model.*
 import com.example.wallrush.domain.npc.NPCManager
 import com.example.wallrush.domain.npc.NPCPersonality
 import com.example.wallrush.domain.npc.NPCProfile
+import com.example.wallrush.domain.achievements.AchievementManager
+import com.example.wallrush.domain.challenges.DailyChallengeManager
+import com.example.wallrush.domain.notifications.SmartNotificationHelper
 import com.example.wallrush.ui.components.ActiveEmote
 import com.example.wallrush.ui.localization.AppLanguage
+import com.example.wallrush.ui.localization.Strings
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -39,7 +43,8 @@ enum class ScreenState {
     LEADERBOARD,
     PROFILE,
     SETTINGS,
-    ABOUT
+    ABOUT,
+    ACHIEVEMENTS
 }
 
 enum class P2PConnectionStatus {
@@ -97,6 +102,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         // Sync sound and vibration manager with saved preferences
         soundManager.isSoundEnabled = settingsPreferences.isSoundEnabled()
         soundManager.isVibrationEnabled = settingsPreferences.isVibrationEnabled()
+
+        SmartNotificationHelper.initChannel(application)
     }
 
     private val _currentScreen = MutableStateFlow(ScreenState.HOME)
@@ -164,6 +171,21 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     private val _createdRoomChallenge = MutableStateFlow<CreatedRoomChallenge?>(null)
     val createdRoomChallenge: StateFlow<CreatedRoomChallenge?> = _createdRoomChallenge.asStateFlow()
 
+    // Offline bypass glitch mode (unlocked by secret long press on Quick Match / Play Online)
+    private val _isOfflineBypassGlitchActive = MutableStateFlow(false)
+    val isOfflineBypassGlitchActive: StateFlow<Boolean> = _isOfflineBypassGlitchActive.asStateFlow()
+
+    // Achievements & Daily Quests
+    private val _achievements = MutableStateFlow<List<Achievement>>(emptyList())
+    val achievements: StateFlow<List<Achievement>> = _achievements.asStateFlow()
+
+    private val _dailyChallenges = MutableStateFlow<List<DailyChallenge>>(emptyList())
+    val dailyChallenges: StateFlow<List<DailyChallenge>> = _dailyChallenges.asStateFlow()
+
+    // In-app sliding notification banner
+    private val _inAppNotification = MutableStateFlow<InAppNotification?>(null)
+    val inAppNotification: StateFlow<InAppNotification?> = _inAppNotification.asStateFlow()
+
     // Quick Match Loading Simulation State
     private val _isQuickMatchSearching = MutableStateFlow(false)
     val isQuickMatchSearching: StateFlow<Boolean> = _isQuickMatchSearching.asStateFlow()
@@ -206,6 +228,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val profile = repository.getOrCreateProfile()
             _userProfile.value = profile
+            refreshAchievements()
+            refreshDailyChallenges()
             detectLocalIp()
             generateLivePublicRooms()
             startLiveRoomsTicker()
@@ -285,6 +309,22 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.updateProfile(newName, avatarId)
             _userProfile.value = _userProfile.value.copy(username = newName, avatarId = avatarId)
+            val lang = _settings.value.language
+            AchievementManager.recordProfileCustomization(getApplication()) { ach ->
+                SmartNotificationHelper.showAchievementUnlockedNotification(
+                    getApplication(),
+                    Strings.get(ach.titleKey, lang),
+                    Strings.get(ach.descKey, lang),
+                    ach.rewardXp
+                )
+                showInAppNotification(
+                    title = "🏆 " + Strings.get(ach.titleKey, lang),
+                    message = Strings.get(ach.descKey, lang),
+                    icon = ach.icon,
+                    type = NotificationType.ACHIEVEMENT
+                )
+                refreshAchievements()
+            }
         }
     }
 
@@ -302,17 +342,143 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     // ==========================================
+    // ACHIEVEMENTS & DAILY CHALLENGES MANAGEMENT
+    // ==========================================
+
+    fun refreshAchievements() {
+        val list = AchievementManager.loadAllAchievements(getApplication(), _userProfile.value)
+        _achievements.value = list
+    }
+
+    fun refreshDailyChallenges() {
+        val list = DailyChallengeManager.loadTodayChallenges(getApplication())
+        _dailyChallenges.value = list
+    }
+
+    fun launchDailyChallenge(challenge: DailyChallenge) {
+        soundManager.playButton()
+        val rules = GameRules(
+            mode = challenge.launchMode,
+            wallsPerPlayer = challenge.launchWallsCount,
+            timeLimitSeconds = challenge.launchTimeLimitSeconds,
+            aiDifficulty = challenge.launchAiDifficulty
+        )
+
+        val opponentName = challenge.opponentName
+        val opponentAvatar = challenge.opponentAvatar
+
+        if (challenge.launchMode == GameMode.QUAD_MODE) {
+            val opponents = NPCManager.generateLobbyHosts(getApplication(), 3)
+            startMatch(
+                rules = rules,
+                player2Name = opponentName,
+                player2Avatar = opponentAvatar,
+                player2IsAI = true,
+                player3Name = "${opponents[0].countryFlag} ${opponents[0].name}",
+                player3Avatar = opponents[0].avatarId,
+                player3IsAI = true,
+                player4Name = "${opponents[1].countryFlag} ${opponents[1].name}",
+                player4Avatar = opponents[1].avatarId,
+                player4IsAI = true
+            )
+        } else {
+            startMatch(
+                rules = rules,
+                player2Name = opponentName,
+                player2Avatar = opponentAvatar,
+                player2IsAI = true
+            )
+        }
+    }
+
+    fun rerollRandomChallenge() {
+        soundManager.playButton()
+        DailyChallengeManager.rerollRandomChallenge(getApplication())
+        refreshDailyChallenges()
+    }
+
+    fun claimDailyChallenge(challengeId: String) {
+        val xp = DailyChallengeManager.claimChallengeReward(getApplication(), challengeId)
+        if (xp > 0) {
+            soundManager.playWin()
+            viewModelScope.launch {
+                val current = _userProfile.value
+                val updated = current.copy(ratingScore = current.ratingScore + xp)
+                repository.updateProfile(updated.username, updated.avatarId)
+                _userProfile.value = updated
+                refreshDailyChallenges()
+                showInAppNotification(
+                    title = "🎉 +" + xp + " Rating XP!",
+                    message = Strings.get("claimed", _settings.value.language),
+                    icon = "⭐",
+                    type = NotificationType.DAILY_CHALLENGE
+                )
+            }
+        }
+    }
+
+    fun activateOfflineBypassGlitch() {
+        _isOfflineBypassGlitchActive.value = true
+        soundManager.playWin()
+        val lang = _settings.value.language
+        AchievementManager.unlockSecretGlitch(getApplication()) { ach ->
+            SmartNotificationHelper.showAchievementUnlockedNotification(
+                getApplication(),
+                Strings.get(ach.titleKey, lang),
+                Strings.get(ach.descKey, lang),
+                ach.rewardXp
+            )
+            showInAppNotification(
+                title = "🏆 " + Strings.get(ach.titleKey, lang),
+                message = Strings.get(ach.descKey, lang),
+                icon = ach.icon,
+                type = NotificationType.SECRET_GLITCH
+            )
+            refreshAchievements()
+        }
+        showInAppNotification(
+            title = "🔓 " + Strings.get("secret_glitch_master", lang),
+            message = Strings.get("secret_glitch_notice", lang),
+            icon = "⚡",
+            type = NotificationType.SECRET_GLITCH
+        )
+    }
+
+    fun showInAppNotification(title: String, message: String, icon: String, type: NotificationType) {
+        val notification = InAppNotification(
+            id = System.currentTimeMillis().toString(),
+            title = title,
+            message = message,
+            icon = icon,
+            type = type
+        )
+        _inAppNotification.value = notification
+        viewModelScope.launch {
+            delay(4000)
+            if (_inAppNotification.value?.id == notification.id) {
+                _inAppNotification.value = null
+            }
+        }
+    }
+
+    fun dismissInAppNotification() {
+        _inAppNotification.value = null
+    }
+
+    // ==========================================
     // ONLINE PLAY & LIVE DYNAMIC ROOMS
     // ==========================================
 
     fun onQuickMatchClicked(targetMode: GameMode = GameMode.QUICK_MATCH, bypassGlitch: Boolean = false) {
-        if (!bypassGlitch) {
-            val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
-            if (!hasInternet) {
-                _showNoInternetDialog.value = true
-                soundManager.playInvalid()
-                return
-            }
+        if (bypassGlitch) {
+            activateOfflineBypassGlitch()
+        }
+
+        val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
+        if (!hasInternet) {
+            _showNoInternetDialog.value = true
+            soundManager.playInvalid()
+            return
         }
 
         // Live Matchmaking simulation with varied rules & search loading animation
@@ -320,7 +486,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             soundManager.playButton()
             _isQuickMatchSearching.value = true
 
-            val randomWalls = if (targetMode == GameMode.QUAD_MODE) 5 else listOf(8, 10, 12, 15).random()
+            val randomWalls = if (targetMode == GameMode.QUAD_MODE) listOf(5, 8, 10).random() else listOf(8, 10, 12, 15).random()
             val randomTime = listOf(180, 240, 300, 420).random()
             val rules = GameRules(wallsPerPlayer = randomWalls, timeLimitSeconds = randomTime, mode = targetMode)
 
@@ -369,7 +535,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     private var challengeTimerJob: Job? = null
 
     fun createPublicRoomWithWaiting(rules: GameRules) {
-        val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
+        val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
         if (!hasInternet) {
             _showNoInternetDialog.value = true
             soundManager.playInvalid()
@@ -465,20 +631,21 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun onPlayOnlineClicked(bypassGlitch: Boolean = false) {
-        if (!bypassGlitch) {
-            val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
-            if (!hasInternet) {
-                _showNoInternetDialog.value = true
-                soundManager.playInvalid()
-                return
-            }
+        if (bypassGlitch) {
+            activateOfflineBypassGlitch()
+        }
+        val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
+        if (!hasInternet) {
+            _showNoInternetDialog.value = true
+            soundManager.playInvalid()
+            return
         }
         generateLivePublicRooms()
         navigateTo(ScreenState.PUBLIC_ROOMS)
     }
 
     fun refreshPublicRooms() {
-        val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
+        val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
         if (!hasInternet) {
             _showNoInternetDialog.value = true
             soundManager.playInvalid()
@@ -531,7 +698,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun joinPublicRoom(room: PublicRoomItem) {
-        val hasInternet = NetworkHelper.isInternetAvailable(getApplication())
+        val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
         if (!hasInternet) {
             _showNoInternetDialog.value = true
             soundManager.playInvalid()
@@ -545,7 +712,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             val p4 = opponents[2]
             startMatch(
                 rules = GameRules(
-                    wallsPerPlayer = 5,
+                    wallsPerPlayer = room.wallsCount,
                     timeLimitSeconds = room.timeLimitSeconds,
                     mode = GameMode.QUAD_MODE
                 ),
@@ -1039,6 +1206,22 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             _isWallMode.value = false
             _previewWall.value = null
 
+            DailyChallengeManager.onWallPlaced(getApplication()) { ch ->
+                val lang = _settings.value.language
+                SmartNotificationHelper.showDailyQuestsNotification(
+                    getApplication(),
+                    Strings.get(ch.titleKey, lang),
+                    Strings.get(ch.descKey, lang)
+                )
+                showInAppNotification(
+                    title = "⚔️ " + Strings.get(ch.titleKey, lang),
+                    message = Strings.get(ch.descKey, lang),
+                    icon = ch.icon,
+                    type = NotificationType.DAILY_CHALLENGE
+                )
+                refreshDailyChallenges()
+            }
+
             // Send to P2P peer if active
             if (isP2PActiveMatch) {
                 p2pConnection?.sendWall(wall.x, wall.y, wall.orientation == WallOrientation.HORIZONTAL)
@@ -1135,9 +1318,54 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             soundManager.playLose()
         }
 
+        val lang = _settings.value.language
+
+        AchievementManager.onMatchFinished(
+            context = getApplication(),
+            finalState = finalState,
+            localPlayerId = localPlayerId,
+            profile = _userProfile.value,
+            isP2PMatch = isP2PActiveMatch
+        ) { ach ->
+            SmartNotificationHelper.showAchievementUnlockedNotification(
+                getApplication(),
+                Strings.get(ach.titleKey, lang),
+                Strings.get(ach.descKey, lang),
+                ach.rewardXp
+            )
+            showInAppNotification(
+                title = "🏆 " + Strings.get(ach.titleKey, lang),
+                message = Strings.get(ach.descKey, lang),
+                icon = ach.icon,
+                type = NotificationType.ACHIEVEMENT
+            )
+            refreshAchievements()
+        }
+
+        DailyChallengeManager.onMatchFinished(
+            context = getApplication(),
+            finalState = finalState,
+            localPlayerId = localPlayerId
+        ) { ch ->
+            SmartNotificationHelper.showDailyQuestsNotification(
+                getApplication(),
+                Strings.get(ch.titleKey, lang),
+                Strings.get(ch.descKey, lang)
+            )
+            showInAppNotification(
+                title = "⚔️ " + Strings.get(ch.titleKey, lang),
+                message = Strings.get(ch.descKey, lang),
+                icon = ch.icon,
+                type = NotificationType.DAILY_CHALLENGE
+            )
+            refreshDailyChallenges()
+        }
+
         viewModelScope.launch {
             repository.saveCompletedMatch(finalState, duration, localPlayerId)
             _userProfile.value = repository.getOrCreateProfile()
+            refreshAchievements()
+            refreshDailyChallenges()
         }
     }
 

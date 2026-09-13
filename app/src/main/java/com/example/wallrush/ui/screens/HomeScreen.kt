@@ -45,6 +45,7 @@ fun HomeScreen(
     val profile by viewModel.userProfile.collectAsState()
     val showNoInternet by viewModel.showNoInternetDialog.collectAsState()
     val isQuickMatchSearching by viewModel.isQuickMatchSearching.collectAsState()
+    val isBypassActive by viewModel.isOfflineBypassGlitchActive.collectAsState()
     val language = settings.language
 
     var showQuickMatchDialog by remember { mutableStateOf(false) }
@@ -192,7 +193,7 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 showQuickMatchDialog = false
-                                viewModel.onQuickMatchClicked(GameMode.QUICK_MATCH, bypassGlitch = false)
+                                viewModel.onQuickMatchClicked(GameMode.QUICK_MATCH, bypassGlitch = isBypassActive)
                             }
                             .border(1.dp, Player1Primary.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                         color = Color(0xFF0C4A6E).copy(alpha = 0.4f),
@@ -231,7 +232,7 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 showQuickMatchDialog = false
-                                viewModel.onQuickMatchClicked(GameMode.RACE_MODE, bypassGlitch = false)
+                                viewModel.onQuickMatchClicked(GameMode.RACE_MODE, bypassGlitch = isBypassActive)
                             }
                             .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                         color = Color(0xFF451A03).copy(alpha = 0.4f),
@@ -270,7 +271,7 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 showQuickMatchDialog = false
-                                viewModel.onQuickMatchClicked(GameMode.QUAD_MODE, bypassGlitch = false)
+                                viewModel.onQuickMatchClicked(GameMode.QUAD_MODE, bypassGlitch = isBypassActive)
                             }
                             .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                         color = Color(0xFF064E3B).copy(alpha = 0.4f),
@@ -744,6 +745,23 @@ fun HomeScreen(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // Achievements & Daily Quests Icon
+                        IconButton(
+                            onClick = { viewModel.navigateTo(ScreenState.ACHIEVEMENTS) },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GoldRating.copy(alpha = 0.15f))
+                                .border(1.dp, GoldRating.copy(alpha = 0.4f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EmojiEvents,
+                                contentDescription = Strings.get("achievements_title", language),
+                                tint = GoldRating,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         // About App Icon
                         IconButton(
                             onClick = { viewModel.navigateTo(ScreenState.ABOUT) },
