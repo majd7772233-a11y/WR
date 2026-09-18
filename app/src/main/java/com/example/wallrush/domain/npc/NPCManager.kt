@@ -125,6 +125,11 @@ object NPCManager {
         return candidate
     }
 
+    fun getOpponentWithPersonality(context: Context, personality: NPCPersonality, targetDifficulty: AIDifficulty? = null): NPCProfile {
+        val base = getRandomOpponent(context, targetDifficulty)
+        return base.copy(personality = personality)
+    }
+
     /**
      * Generates a batch of distinct public lobby room hosts.
      */
@@ -161,9 +166,10 @@ object NPCManager {
 
         val personality = when (targetDifficulty) {
             AIDifficulty.EASY -> listOf(NPCPersonality.THE_RUSHER, NPCPersonality.THE_CHAOTIC).random()
-            AIDifficulty.HARD -> listOf(NPCPersonality.THE_TACTICIAN, NPCPersonality.THE_ARCHITECT, NPCPersonality.THE_COUNTER_PUNCHER).random()
-            AIDifficulty.MEDIUM -> NPCPersonality.values().random()
-            null -> NPCPersonality.values().random()
+            AIDifficulty.HARD, AIDifficulty.EXPERT -> listOf(NPCPersonality.THE_TACTICIAN, NPCPersonality.THE_ARCHITECT, NPCPersonality.THE_COUNTER_PUNCHER).random()
+            AIDifficulty.NIGHTMARE -> listOf(NPCPersonality.THE_PREDICTOR, NPCPersonality.THE_TRICKSTER, NPCPersonality.THE_TACTICIAN).random()
+            AIDifficulty.INSANE -> listOf(NPCPersonality.THE_MERCILESS, NPCPersonality.THE_TACTICIAN, NPCPersonality.THE_ARCHITECT).random()
+            AIDifficulty.MEDIUM, null -> NPCPersonality.values().random()
         }
 
         val rating = when (personality) {
@@ -173,6 +179,10 @@ object NPCManager {
             NPCPersonality.THE_COUNTER_PUNCHER -> Random.nextInt(1500, 2050)
             NPCPersonality.THE_ARCHITECT -> Random.nextInt(1600, 2150)
             NPCPersonality.THE_TACTICIAN -> Random.nextInt(1800, 2450)
+            NPCPersonality.THE_PREDICTOR -> Random.nextInt(1900, 2500)
+            NPCPersonality.THE_TRICKSTER -> Random.nextInt(1700, 2300)
+            NPCPersonality.THE_SPEED_DEMON -> Random.nextInt(1400, 2100)
+            NPCPersonality.THE_MERCILESS -> Random.nextInt(2200, 2700)
         }
 
         val (minDelay, maxDelay) = when (personality) {
@@ -182,6 +192,10 @@ object NPCManager {
             NPCPersonality.THE_COUNTER_PUNCHER -> Pair(800L, 1500L)
             NPCPersonality.THE_TACTICIAN -> Pair(900L, 1750L)
             NPCPersonality.THE_ARCHITECT -> Pair(1000L, 1900L)
+            NPCPersonality.THE_PREDICTOR -> Pair(700L, 1400L)
+            NPCPersonality.THE_TRICKSTER -> Pair(600L, 1300L)
+            NPCPersonality.THE_SPEED_DEMON -> Pair(350L, 700L)
+            NPCPersonality.THE_MERCILESS -> Pair(800L, 1600L)
         }
 
         val country = if (isArabic) {

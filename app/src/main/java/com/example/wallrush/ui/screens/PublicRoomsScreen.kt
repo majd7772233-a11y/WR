@@ -1,5 +1,6 @@
 package com.example.wallrush.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -125,6 +126,48 @@ fun PublicRoomsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
         ) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF064E3B).copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF34D399))
+                            )
+                            Text(
+                                text = if (settings.language == com.example.wallrush.ui.localization.AppLanguage.ARABIC)
+                                    "سيرفرات حية مباشرة • تتحدث تلقائياً كل 5 ثوانٍ"
+                                else
+                                    "LIVE SERVERS • AUTO-REFRESH EVERY 5S",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF34D399)
+                            )
+                        }
+                        Text(
+                            text = "⚡ LIVE",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF10B981)
+                        )
+                    }
+                }
+            }
+
             if (publicRooms.isEmpty()) {
                 item {
                     Box(
@@ -489,12 +532,26 @@ private fun PublicRoomCard(
                         // Dynamic Ping indicator
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = if (room.pingMs < 50) SuccessGreen.copy(alpha = 0.2f) else Player1Primary.copy(alpha = 0.2f)
+                            color = if (room.pingMs < 45) SuccessGreen.copy(alpha = 0.2f) else Player1Primary.copy(alpha = 0.2f)
                         ) {
                             Text(
                                 text = "📶 ${room.pingMs}ms",
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                color = if (room.pingMs < 50) SuccessGreen else Player1Primary,
+                                color = if (room.pingMs < 45) SuccessGreen else Player1Primary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Players Occupancy badge
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (room.isLiveGame) Color(0xFFEF4444).copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                text = "${room.currentPlayers}/${room.maxPlayers} 👥",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                color = if (room.isLiveGame) Color(0xFFFF6B6B) else Color(0xFF34D399),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -504,19 +561,27 @@ private fun PublicRoomCard(
                     Text(
                         text = room.status,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Player1Dark,
-                        fontSize = 10.sp
+                        color = if (room.isLiveGame) Color(0xFFFF9800) else Player1Dark,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
             Button(
                 onClick = onJoin,
-                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen, contentColor = Color.Black),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (room.isLiveGame) Color(0xFF475569) else SuccessGreen,
+                    contentColor = if (room.isLiveGame) Color.White else Color.Black
+                ),
                 shape = RoundedCornerShape(12.dp),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Text(text = Strings.get("join_room", language), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(
+                    text = if (room.isLiveGame) (if (language == com.example.wallrush.ui.localization.AppLanguage.ARABIC) "مشاهدة" else "Spectate") else Strings.get("join_room", language),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
         }
     }

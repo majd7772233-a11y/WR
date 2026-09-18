@@ -1,5 +1,6 @@
 package com.example.wallrush.domain.engine
 
+import com.example.wallrush.domain.model.Obstacle
 import com.example.wallrush.domain.model.PlayerId
 import com.example.wallrush.domain.model.Position
 import com.example.wallrush.domain.model.Wall
@@ -51,15 +52,22 @@ object PathFinder {
     fun hasPathToGoal(
         start: Position,
         targetGoalRow: Int,
-        walls: List<Wall>
+        walls: List<Wall>,
+        gridSize: Int = 9,
+        obstacles: List<Obstacle> = emptyList()
     ): Boolean {
         if (start.y == targetGoalRow) return true
+        val obstacleSet = obstacles.map { Position(it.x, it.y) }.toSet()
+        if (start in obstacleSet) return false
 
-        val visited = Array(9) { BooleanArray(9) }
+        val safeGridSize = gridSize.coerceAtLeast(3)
+        val visited = Array(safeGridSize) { BooleanArray(safeGridSize) }
         val queue = ArrayDeque<Position>()
 
         queue.add(start)
-        visited[start.y][start.x] = true
+        if (start.y in 0 until safeGridSize && start.x in 0 until safeGridSize) {
+            visited[start.y][start.x] = true
+        }
 
         val neighbors = arrayOf(
             Pair(0, -1), // Up
@@ -79,9 +87,9 @@ object PathFinder {
                 val nx = current.x + dx
                 val ny = current.y + dy
 
-                if (nx in 0..8 && ny in 0..8 && !visited[ny][nx]) {
+                if (nx in 0 until safeGridSize && ny in 0 until safeGridSize && !visited[ny][nx]) {
                     val next = Position(nx, ny)
-                    if (!isPassageBlocked(current, next, walls)) {
+                    if (next !in obstacleSet && !isPassageBlocked(current, next, walls)) {
                         visited[ny][nx] = true
                         queue.add(next)
                     }
@@ -99,15 +107,22 @@ object PathFinder {
     fun shortestDistanceToGoal(
         start: Position,
         targetGoalRow: Int,
-        walls: List<Wall>
+        walls: List<Wall>,
+        gridSize: Int = 9,
+        obstacles: List<Obstacle> = emptyList()
     ): Int {
         if (start.y == targetGoalRow) return 0
+        val obstacleSet = obstacles.map { Position(it.x, it.y) }.toSet()
+        if (start in obstacleSet) return Int.MAX_VALUE / 2
 
-        val dist = Array(9) { IntArray(9) { -1 } }
+        val safeGridSize = gridSize.coerceAtLeast(3)
+        val dist = Array(safeGridSize) { IntArray(safeGridSize) { -1 } }
         val queue = ArrayDeque<Position>()
 
         queue.add(start)
-        dist[start.y][start.x] = 0
+        if (start.y in 0 until safeGridSize && start.x in 0 until safeGridSize) {
+            dist[start.y][start.x] = 0
+        }
 
         val neighbors = arrayOf(
             Pair(0, -1),
@@ -131,9 +146,9 @@ object PathFinder {
                 val nx = current.x + dx
                 val ny = current.y + dy
 
-                if (nx in 0..8 && ny in 0..8 && dist[ny][nx] == -1) {
+                if (nx in 0 until safeGridSize && ny in 0 until safeGridSize && dist[ny][nx] == -1) {
                     val next = Position(nx, ny)
-                    if (!isPassageBlocked(current, next, walls)) {
+                    if (next !in obstacleSet && !isPassageBlocked(current, next, walls)) {
                         dist[ny][nx] = currentDist + 1
                         queue.add(next)
                     }
@@ -150,16 +165,23 @@ object PathFinder {
     fun findShortestPath(
         start: Position,
         targetGoalRow: Int,
-        walls: List<Wall>
+        walls: List<Wall>,
+        gridSize: Int = 9,
+        obstacles: List<Obstacle> = emptyList()
     ): List<Position> {
         if (start.y == targetGoalRow) return listOf(start)
+        val obstacleSet = obstacles.map { Position(it.x, it.y) }.toSet()
+        if (start in obstacleSet) return emptyList()
 
+        val safeGridSize = gridSize.coerceAtLeast(3)
         val parent = mutableMapOf<Position, Position>()
-        val visited = Array(9) { BooleanArray(9) }
+        val visited = Array(safeGridSize) { BooleanArray(safeGridSize) }
         val queue = ArrayDeque<Position>()
 
         queue.add(start)
-        visited[start.y][start.x] = true
+        if (start.y in 0 until safeGridSize && start.x in 0 until safeGridSize) {
+            visited[start.y][start.x] = true
+        }
 
         var goalReached: Position? = null
 
@@ -182,9 +204,9 @@ object PathFinder {
                 val nx = current.x + dx
                 val ny = current.y + dy
 
-                if (nx in 0..8 && ny in 0..8 && !visited[ny][nx]) {
+                if (nx in 0 until safeGridSize && ny in 0 until safeGridSize && !visited[ny][nx]) {
                     val next = Position(nx, ny)
-                    if (!isPassageBlocked(current, next, walls)) {
+                    if (next !in obstacleSet && !isPassageBlocked(current, next, walls)) {
                         visited[ny][nx] = true
                         parent[next] = current
                         queue.add(next)
@@ -205,20 +227,27 @@ object PathFinder {
     }
 
     /**
-     * Checks if a path exists from start position to a specific target cell (e.g. center cell (4, 4) in Quad Mode).
+     * Checks if a path exists from start position to a specific target cell (e.g. center cell in Quad Mode).
      */
     fun hasPathToCell(
         start: Position,
         targetCell: Position,
-        walls: List<Wall>
+        walls: List<Wall>,
+        gridSize: Int = 9,
+        obstacles: List<Obstacle> = emptyList()
     ): Boolean {
         if (start == targetCell) return true
+        val obstacleSet = obstacles.map { Position(it.x, it.y) }.toSet()
+        if (start in obstacleSet || targetCell in obstacleSet) return false
 
-        val visited = Array(9) { BooleanArray(9) }
+        val safeGridSize = gridSize.coerceAtLeast(3)
+        val visited = Array(safeGridSize) { BooleanArray(safeGridSize) }
         val queue = ArrayDeque<Position>()
 
         queue.add(start)
-        visited[start.y][start.x] = true
+        if (start.y in 0 until safeGridSize && start.x in 0 until safeGridSize) {
+            visited[start.y][start.x] = true
+        }
 
         val neighbors = arrayOf(
             Pair(0, -1),
@@ -238,9 +267,9 @@ object PathFinder {
                 val nx = current.x + dx
                 val ny = current.y + dy
 
-                if (nx in 0..8 && ny in 0..8 && !visited[ny][nx]) {
+                if (nx in 0 until safeGridSize && ny in 0 until safeGridSize && !visited[ny][nx]) {
                     val next = Position(nx, ny)
-                    if (!isPassageBlocked(current, next, walls)) {
+                    if (next !in obstacleSet && !isPassageBlocked(current, next, walls)) {
                         visited[ny][nx] = true
                         queue.add(next)
                     }
@@ -257,15 +286,22 @@ object PathFinder {
     fun shortestDistanceToCell(
         start: Position,
         targetCell: Position,
-        walls: List<Wall>
+        walls: List<Wall>,
+        gridSize: Int = 9,
+        obstacles: List<Obstacle> = emptyList()
     ): Int {
         if (start == targetCell) return 0
+        val obstacleSet = obstacles.map { Position(it.x, it.y) }.toSet()
+        if (start in obstacleSet || targetCell in obstacleSet) return Int.MAX_VALUE / 2
 
-        val dist = Array(9) { IntArray(9) { -1 } }
+        val safeGridSize = gridSize.coerceAtLeast(3)
+        val dist = Array(safeGridSize) { IntArray(safeGridSize) { -1 } }
         val queue = ArrayDeque<Position>()
 
         queue.add(start)
-        dist[start.y][start.x] = 0
+        if (start.y in 0 until safeGridSize && start.x in 0 until safeGridSize) {
+            dist[start.y][start.x] = 0
+        }
 
         val neighbors = arrayOf(
             Pair(0, -1),
@@ -286,9 +322,9 @@ object PathFinder {
                 val nx = current.x + dx
                 val ny = current.y + dy
 
-                if (nx in 0..8 && ny in 0..8 && dist[ny][nx] == -1) {
+                if (nx in 0 until safeGridSize && ny in 0 until safeGridSize && dist[ny][nx] == -1) {
                     val next = Position(nx, ny)
-                    if (!isPassageBlocked(current, next, walls)) {
+                    if (next !in obstacleSet && !isPassageBlocked(current, next, walls)) {
                         dist[ny][nx] = currentDist + 1
                         queue.add(next)
                     }
@@ -305,16 +341,23 @@ object PathFinder {
     fun findShortestPathToCell(
         start: Position,
         targetCell: Position,
-        walls: List<Wall>
+        walls: List<Wall>,
+        gridSize: Int = 9,
+        obstacles: List<Obstacle> = emptyList()
     ): List<Position> {
         if (start == targetCell) return listOf(start)
+        val obstacleSet = obstacles.map { Position(it.x, it.y) }.toSet()
+        if (start in obstacleSet || targetCell in obstacleSet) return emptyList()
 
+        val safeGridSize = gridSize.coerceAtLeast(3)
         val parent = mutableMapOf<Position, Position>()
-        val visited = Array(9) { BooleanArray(9) }
+        val visited = Array(safeGridSize) { BooleanArray(safeGridSize) }
         val queue = ArrayDeque<Position>()
 
         queue.add(start)
-        visited[start.y][start.x] = true
+        if (start.y in 0 until safeGridSize && start.x in 0 until safeGridSize) {
+            visited[start.y][start.x] = true
+        }
 
         var reached = false
 
@@ -337,9 +380,9 @@ object PathFinder {
                 val nx = current.x + dx
                 val ny = current.y + dy
 
-                if (nx in 0..8 && ny in 0..8 && !visited[ny][nx]) {
+                if (nx in 0 until safeGridSize && ny in 0 until safeGridSize && !visited[ny][nx]) {
                     val next = Position(nx, ny)
-                    if (!isPassageBlocked(current, next, walls)) {
+                    if (next !in obstacleSet && !isPassageBlocked(current, next, walls)) {
                         visited[ny][nx] = true
                         parent[next] = current
                         queue.add(next)

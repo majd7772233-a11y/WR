@@ -2,6 +2,7 @@ package com.example.wallrush.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,9 +11,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 import com.example.wallrush.ui.components.GameBoardCanvas
 import com.example.wallrush.ui.components.PlayerHeaderCard
@@ -30,6 +33,7 @@ fun ReplayScreen(
     val replayEngine by viewModel.currentReplayEngine.collectAsState()
     val currentStep by viewModel.currentReplayStep.collectAsState()
     val isPlaying by viewModel.isReplayPlaying.collectAsState()
+    val replaySpeed by viewModel.replaySpeed.collectAsState()
     val language = settings.language
 
     val engine = replayEngine ?: return
@@ -129,6 +133,32 @@ fun ReplayScreen(
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
+
+                        // Speed selector pills
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val speeds = listOf(0.25f, 0.5f, 1f, 2f, 4f)
+                            speeds.forEach { speed ->
+                                val isSelected = replaySpeed == speed
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { viewModel.setReplaySpeed(speed) },
+                                    color = if (isSelected) Player1Primary else SurfaceCardLight,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = "${if (speed == 0.25f) "0.25" else if (speed == 0.5f) "0.5" else speed.toInt().toString()}x",
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Normal,
+                                        color = if (isSelected) Color.Black else TextSecondary
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Slider(
@@ -143,7 +173,7 @@ fun ReplayScreen(
                         )
                     )
 
-                    // Step Buttons: First, Prev, Play/Pause, Next, Last
+                    // Step Buttons: Start, Frame -1, Play/Pause, Frame +1, End
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -153,14 +183,20 @@ fun ReplayScreen(
                             onClick = { viewModel.setReplayStep(0) },
                             enabled = currentStep > 0
                         ) {
-                            Icon(Icons.Default.FirstPage, contentDescription = "First", tint = TextPrimary)
+                            Icon(Icons.Default.FirstPage, contentDescription = "Start", tint = TextPrimary)
                         }
 
-                        IconButton(
+                        // Frame -1
+                        OutlinedButton(
                             onClick = { viewModel.setReplayStep(currentStep - 1) },
-                            enabled = currentStep > 0
+                            enabled = currentStep > 0,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Prev", tint = TextPrimary)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = "Frame -1", modifier = Modifier.size(16.dp))
+                                Text("-1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
 
                         FilledIconButton(
@@ -173,18 +209,24 @@ fun ReplayScreen(
                             )
                         }
 
-                        IconButton(
+                        // Frame +1
+                        OutlinedButton(
                             onClick = { viewModel.setReplayStep(currentStep + 1) },
-                            enabled = currentStep < engine.totalSteps
+                            enabled = currentStep < engine.totalSteps,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = TextPrimary)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("+1", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.ChevronRight, contentDescription = "Frame +1", modifier = Modifier.size(16.dp))
+                            }
                         }
 
                         IconButton(
                             onClick = { viewModel.setReplayStep(engine.totalSteps) },
                             enabled = currentStep < engine.totalSteps
                         ) {
-                            Icon(Icons.Default.LastPage, contentDescription = "Last", tint = TextPrimary)
+                            Icon(Icons.Default.LastPage, contentDescription = "End", tint = TextPrimary)
                         }
                     }
                 }

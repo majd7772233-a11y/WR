@@ -22,15 +22,18 @@ object GameEngine {
     ): GameState {
         val initialTime = if (rules.timeLimitSeconds > 0) rules.timeLimitSeconds * 1000L else Long.MAX_VALUE
         val wallsCount = rules.wallsPerPlayer
+        val gridSize = rules.gridSize.coerceAtLeast(3)
+        val mid = gridSize / 2
+        val lastRow = gridSize - 1
 
         val p1Start = when (rules.mode) {
-            GameMode.RACE_MODE -> Position(3, 8)
-            else -> Position(4, 8)
+            GameMode.RACE_MODE -> Position(mid - 1, lastRow)
+            else -> Position(mid, lastRow)
         }
 
         val p2Start = when (rules.mode) {
-            GameMode.RACE_MODE -> Position(5, 8)
-            else -> Position(4, 0)
+            GameMode.RACE_MODE -> Position(mid + 1, lastRow)
+            else -> Position(mid, 0)
         }
 
         val p1 = PlayerState(
@@ -42,7 +45,8 @@ object GameEngine {
             timeRemainingMillis = initialTime,
             isAI = false,
             isHost = true,
-            isConnected = true
+            isConnected = true,
+            targetGoalRow = if (rules.mode == GameMode.RACE_MODE) 0 else 0
         )
 
         val p2 = PlayerState(
@@ -54,7 +58,8 @@ object GameEngine {
             timeRemainingMillis = initialTime,
             isAI = player2IsAI,
             isHost = false,
-            isConnected = true
+            isConnected = true,
+            targetGoalRow = if (rules.mode == GameMode.RACE_MODE) 0 else lastRow
         )
 
         val p3 = if (rules.mode == GameMode.QUAD_MODE) {
@@ -62,12 +67,13 @@ object GameEngine {
                 id = PlayerId.PLAYER_3,
                 name = player3Name,
                 avatarId = player3Avatar,
-                position = Position(0, 4), // Left side center
+                position = Position(0, mid), // Left side center
                 remainingWalls = wallsCount,
                 timeRemainingMillis = initialTime,
                 isAI = player3IsAI,
                 isHost = false,
-                isConnected = true
+                isConnected = true,
+                targetGoalRow = mid
             )
         } else null
 
@@ -76,12 +82,13 @@ object GameEngine {
                 id = PlayerId.PLAYER_4,
                 name = player4Name,
                 avatarId = player4Avatar,
-                position = Position(8, 4), // Right side center
+                position = Position(lastRow, mid), // Right side center
                 remainingWalls = wallsCount,
                 timeRemainingMillis = initialTime,
                 isAI = player4IsAI,
                 isHost = false,
-                isConnected = true
+                isConnected = true,
+                targetGoalRow = mid
             )
         } else null
 

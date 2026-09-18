@@ -24,6 +24,20 @@ import com.example.wallrush.domain.npc.NPCProfile
 import com.example.wallrush.domain.achievements.AchievementManager
 import com.example.wallrush.domain.challenges.DailyChallengeManager
 import com.example.wallrush.domain.notifications.SmartNotificationHelper
+import com.example.wallrush.domain.ai.PlayerPatternTracker
+import com.example.wallrush.domain.progression.ProgressionManager
+import com.example.wallrush.domain.progression.LevelInfo
+import com.example.wallrush.domain.titles.TitlesManager
+import com.example.wallrush.domain.titles.PlayerTitle
+import com.example.wallrush.domain.combo.ComboManager
+import com.example.wallrush.domain.combo.MatchRating
+import com.example.wallrush.domain.powerups.PowerUpManager
+import com.example.wallrush.domain.powerups.PowerUpDefinition
+import com.example.wallrush.domain.editor.CustomLevel
+import com.example.wallrush.domain.editor.CustomMapPresets
+import com.example.wallrush.domain.backup.BackupRestoreManager
+import com.example.wallrush.domain.ghost.GhostManager
+import com.example.wallrush.data.local.CustomLevelEntity
 import com.example.wallrush.ui.components.ActiveEmote
 import com.example.wallrush.ui.localization.AppLanguage
 import com.example.wallrush.ui.localization.Strings
@@ -44,7 +58,10 @@ enum class ScreenState {
     PROFILE,
     SETTINGS,
     ABOUT,
-    ACHIEVEMENTS
+    ACHIEVEMENTS,
+    LEVEL_EDITOR,
+    CUSTOM_MAPS,
+    TITLES
 }
 
 enum class P2PConnectionStatus {
@@ -65,7 +82,10 @@ data class PublicRoomItem(
     val wallsCount: Int,
     val pingMs: Int,
     val mode: GameMode = GameMode.PUBLIC_ROOM,
-    val status: String = "Waiting"
+    val status: String = "Waiting",
+    val currentPlayers: Int = 1,
+    val maxPlayers: Int = 2,
+    val isLiveGame: Boolean = false
 )
 
 data class CreatedRoomChallenge(
@@ -197,6 +217,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     val currentReplayStep: StateFlow<Int> = _currentReplayStep.asStateFlow()
     private val _isReplayPlaying = MutableStateFlow(false)
     val isReplayPlaying: StateFlow<Boolean> = _isReplayPlaying.asStateFlow()
+    private val _replaySpeed = MutableStateFlow(1.0f)
+    val replaySpeed: StateFlow<Float> = _replaySpeed.asStateFlow()
 
     // P2P / Play with Friend
     private val _p2pStatus = MutableStateFlow(P2PConnectionStatus.IDLE)
@@ -218,6 +240,52 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         initialValue = emptyList()
     )
 
+    // Progression & Level System (1-100)
+    private val _levelInfo = MutableStateFlow(ProgressionManager.getLevelInfo(ProgressionManager.getTotalXp(application)))
+    val levelInfo: StateFlow<LevelInfo> = _levelInfo.asStateFlow()
+
+    private val _levelUpCelebration = MutableStateFlow<Pair<LevelInfo, PlayerTitle?>?>(null)
+    val levelUpCelebration: StateFlow<Pair<LevelInfo, PlayerTitle?>?> = _levelUpCelebration.asStateFlow()
+
+    // Titles & Badges
+    private val _equippedTitle = MutableStateFlow(TitlesManager.getEquippedTitle(application))
+    val equippedTitle: StateFlow<PlayerTitle> = _equippedTitle.asStateFlow()
+
+    private val _unlockedTitles = MutableStateFlow(TitlesManager.getAllUnlockedTitleIds(application))
+    val unlockedTitles: StateFlow<Set<String>> = _unlockedTitles.asStateFlow()
+
+    // Combos, Near-Misses, and Move Feedback
+    private val _matchRating = MutableStateFlow<MatchRating?>(null)
+    val matchRating: StateFlow<MatchRating?> = _matchRating.asStateFlow()
+
+    private val _activeFeedback = MutableStateFlow<String?>(null)
+    val activeFeedback: StateFlow<String?> = _activeFeedback.asStateFlow()
+
+    // Time Rewind Glitch visual effect & Charges
+    val rewindCharges: StateFlow<Int> = _gameState.map { it?.player1?.rewindCharges ?: 2 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 2)
+
+    private val _isGlitchActive = MutableStateFlow(false)
+    val isGlitchActive: StateFlow<Boolean> = _isGlitchActive.asStateFlow()
+
+    // Personal Ghost Trajectory
+    private val _ghostTrajectory = MutableStateFlow<List<Position>>(GhostManager.getBestGhost(application)?.trajectory ?: emptyList())
+    val ghostTrajectory: StateFlow<List<Position>> = _ghostTrajectory.asStateFlow()
+
+    private val _isGhostEnabled = MutableStateFlow(GhostManager.isGhostEnabled(application))
+    val isGhostEnabled: StateFlow<Boolean> = _isGhostEnabled.asStateFlow()
+
+    // Custom Level Editor
+    private val _customLevels = MutableStateFlow<List<CustomLevel>>(CustomMapPresets.PRESET_MAPS)
+    val customLevels: StateFlow<List<CustomLevel>> = _customLevels.asStateFlow()
+
+    private val _currentCustomLevel = MutableStateFlow<CustomLevel?>(null)
+    val currentCustomLevel: StateFlow<CustomLevel?> = _currentCustomLevel.asStateFlow()
+
+    // Backup & Restore Message
+    private val _backupRestoreMessage = MutableStateFlow<String?>(null)
+    val backupRestoreMessage: StateFlow<String?> = _backupRestoreMessage.asStateFlow()
+
     private var timerJob: Job? = null
     private var aiJob: Job? = null
     private var replayJob: Job? = null
@@ -233,6 +301,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             detectLocalIp()
             generateLivePublicRooms()
             startLiveRoomsTicker()
+            loadCustomLevels()
         }
     }
 
@@ -419,29 +488,6 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
 
     fun activateOfflineBypassGlitch() {
         _isOfflineBypassGlitchActive.value = true
-        soundManager.playWin()
-        val lang = _settings.value.language
-        AchievementManager.unlockSecretGlitch(getApplication()) { ach ->
-            SmartNotificationHelper.showAchievementUnlockedNotification(
-                getApplication(),
-                Strings.get(ach.titleKey, lang),
-                Strings.get(ach.descKey, lang),
-                ach.rewardXp
-            )
-            showInAppNotification(
-                title = "🏆 " + Strings.get(ach.titleKey, lang),
-                message = Strings.get(ach.descKey, lang),
-                icon = ach.icon,
-                type = NotificationType.SECRET_GLITCH
-            )
-            refreshAchievements()
-        }
-        showInAppNotification(
-            title = "🔓 " + Strings.get("secret_glitch_master", lang),
-            message = Strings.get("secret_glitch_notice", lang),
-            icon = "⚡",
-            type = NotificationType.SECRET_GLITCH
-        )
     }
 
     fun showInAppNotification(title: String, message: String, icon: String, type: NotificationType) {
@@ -469,11 +515,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     // ONLINE PLAY & LIVE DYNAMIC ROOMS
     // ==========================================
 
-    fun onQuickMatchClicked(targetMode: GameMode = GameMode.QUICK_MATCH, bypassGlitch: Boolean = false) {
-        if (bypassGlitch) {
-            activateOfflineBypassGlitch()
-        }
-
+    fun onQuickMatchClicked(targetMode: GameMode = GameMode.QUICK_MATCH) {
         val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
         if (!hasInternet) {
             _showNoInternetDialog.value = true
@@ -630,10 +672,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         _createdRoomChallenge.value = null
     }
 
-    fun onPlayOnlineClicked(bypassGlitch: Boolean = false) {
-        if (bypassGlitch) {
-            activateOfflineBypassGlitch()
-        }
+    fun onPlayOnlineClicked() {
         val hasInternet = NetworkHelper.isInternetAvailable(getApplication()) || _isOfflineBypassGlitchActive.value
         if (!hasInternet) {
             _showNoInternetDialog.value = true
@@ -656,7 +695,7 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun generateLivePublicRooms() {
-        val hosts = NPCManager.generateLobbyHosts(getApplication(), 6)
+        val hosts = NPCManager.generateLobbyHosts(getApplication(), 7)
         val roomCodes = listOf("#8A7B2C", "#4F9D1E", "#3M7W8Q", "#9P2K5L", "#6Z4N1T", "#2X8C9V", "#7Y1R4E", "#5T8U2W").shuffled()
 
         val generated = hosts.mapIndexed { index, host ->
@@ -671,27 +710,68 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                 1 -> 300
                 else -> 0
             }
+            val maxP = if (mode == GameMode.QUAD_MODE) 4 else 2
+            val isLive = index == 3 || index == 5
+            val curP = if (isLive) maxP else 1
+            val status = if (isLive) "جولة جارية ⚔️" else if (index == 0) "جاهز للتحدي 🔥" else "بانتظار منافس"
             PublicRoomItem(
                 roomCode = roomCodes.getOrElse(index) { "#R${(1000..9999).random()}" },
                 hostName = "${host.countryFlag} ${host.name}",
                 hostAvatar = host.avatarId,
                 timeLimitSeconds = time,
                 wallsCount = walls,
-                pingMs = (24..68).random(),
+                pingMs = (20..58).random(),
                 mode = mode,
-                status = if (index == 0) "جاهز للتحدي" else "بانتظار لاعب"
+                status = status,
+                currentPlayers = curP,
+                maxPlayers = maxP,
+                isLiveGame = isLive
             )
         }
         _publicRooms.value = generated
+    }
+
+    fun tickLivePublicRooms() {
+        val currentList = _publicRooms.value
+        if (currentList.isEmpty()) {
+            generateLivePublicRooms()
+            return
+        }
+        // Mutate dynamic state to reflect live multiplayer activity every 5 seconds
+        val updated = currentList.mapIndexed { index, room ->
+            val jitter = (-3..3).random()
+            val newPing = (room.pingMs + jitter).coerceIn(18, 85)
+            if (room.isLiveGame && (0..2).random() == 0) {
+                val newHost = NPCManager.generateLobbyHosts(getApplication(), 1).firstOrNull()
+                room.copy(
+                    hostName = if (newHost != null) "${newHost.countryFlag} ${newHost.name}" else room.hostName,
+                    pingMs = newPing,
+                    isLiveGame = false,
+                    currentPlayers = 1,
+                    status = "غرفة جديدة ✨"
+                )
+            } else if (!room.isLiveGame && index == 1) {
+                room.copy(
+                    pingMs = newPing,
+                    isLiveGame = true,
+                    currentPlayers = room.maxPlayers,
+                    status = "جولة جارية ⚔️"
+                )
+            } else {
+                room.copy(pingMs = newPing)
+            }
+        }.sortedBy { it.isLiveGame }
+
+        _publicRooms.value = updated
     }
 
     private fun startLiveRoomsTicker() {
         roomsTickerJob?.cancel()
         roomsTickerJob = viewModelScope.launch {
             while (true) {
-                delay(8000) // update dynamic lobby rooms periodically
+                delay(5000L) // Exactly 5 seconds update interval
                 if (_currentScreen.value == ScreenState.PUBLIC_ROOMS) {
-                    generateLivePublicRooms()
+                    tickLivePublicRooms()
                 }
             }
         }
@@ -1096,8 +1176,52 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
 
         val legalMoves = RuleEngine.getLegalMoves(current, current.currentTurn)
         if (target in legalMoves) {
+            val fromPos = current.getPlayer(current.currentTurn).position
             val updated = GameEngine.makeMove(current, target, current.currentTurn)
-            _gameState.value = updated
+            
+            // Record pattern tracking and combo evaluation for Player 1
+            var stateToEmit = updated
+            if (current.currentTurn == PlayerId.PLAYER_1) {
+                val closestWallDist = current.walls.minOfOrNull {
+                    kotlin.math.abs(it.x - target.x) + kotlin.math.abs(it.y - target.y)
+                } ?: 9
+                PlayerPatternTracker.recordPlayerMove(getApplication(), fromPos, target, closestWallDist)
+
+                val lastWall = current.walls.lastOrNull()
+                val feedback = ComboManager.evaluateMove(
+                    from = fromPos,
+                    to = target,
+                    walls = current.walls,
+                    lastWallPlaced = lastWall,
+                    currentCombo = current.comboCount,
+                    opponentPos = current.player2.position,
+                    goalY = current.player1.targetGoalRow ?: 0,
+                    gridSize = current.rules.gridSize
+                )
+                val newMaxCombo = kotlin.math.max(current.maxCombo, feedback.comboCount)
+                val nearMisses = current.nearMissCount + (if (feedback.isNearMiss) 1 else 0)
+                val currentP1 = updated.player1
+                val updatedEnergy = (currentP1.energy + feedback.energyGained).coerceIn(0, 100)
+                stateToEmit = updated.copy(
+                    player1 = currentP1.copy(energy = updatedEnergy),
+                    comboCount = feedback.comboCount,
+                    maxCombo = newMaxCombo,
+                    nearMissCount = nearMisses
+                )
+                if (feedback.feedbackMessageEn != null) {
+                    val isAr = _settings.value.language == AppLanguage.ARABIC
+                    _activeFeedback.value = if (isAr) feedback.feedbackMessageAr else feedback.feedbackMessageEn
+                    viewModelScope.launch {
+                        delay(1800)
+                        _activeFeedback.value = null
+                    }
+                    if (feedback.isNearMiss) {
+                        soundManager.playNearMiss()
+                    }
+                }
+            }
+
+            _gameState.value = stateToEmit
             soundManager.playMove()
             _isWallMode.value = false
             _previewWall.value = null
@@ -1107,10 +1231,10 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                 p2pConnection?.sendMove(target.x, target.y)
             }
 
-            if (updated.status == GameStatus.FINISHED) {
-                handleGameFinished(updated)
+            if (stateToEmit.status == GameStatus.FINISHED) {
+                handleGameFinished(stateToEmit)
             } else {
-                checkTriggerAI(updated)
+                checkTriggerAI(stateToEmit)
             }
         } else {
             soundManager.playInvalid()
@@ -1200,6 +1324,9 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         if (!isMyTurn) return
 
         if (RuleEngine.isWallPlacementLegal(current, wall, current.currentTurn)) {
+            if (current.currentTurn == PlayerId.PLAYER_1) {
+                PlayerPatternTracker.recordPlayerWallPlacement(getApplication(), wall, current.player1.position, current.player2.position)
+            }
             val updated = GameEngine.placeWall(current, wall, current.currentTurn)
             _gameState.value = updated
             soundManager.playWallPlace()
@@ -1260,9 +1387,9 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                 if (current.currentTurn != turnPlayerId || current.status != GameStatus.IN_PROGRESS) return@launch
 
                 val action = if (npc != null && current.rules.mode != GameMode.QUAD_MODE) {
-                    AIEngine.decideNPCMove(current, npc.personality)
+                    AIEngine.decideNPCMove(current, npc.personality, getApplication())
                 } else {
-                    AIEngine.decideMove(current, current.rules.aiDifficulty)
+                    AIEngine.decideMove(current, current.rules.aiDifficulty, getApplication())
                 }
 
                 when (action) {
@@ -1366,6 +1493,29 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             _userProfile.value = repository.getOrCreateProfile()
             refreshAchievements()
             refreshDailyChallenges()
+
+            // Rating & Progression calculation
+            val rating = ComboManager.calculateMatchRating(finalState, duration, localPlayerId, powerupsUsed = 0)
+            _matchRating.value = rating
+
+            val (newLevelInfo, leveledUp) = ProgressionManager.addXp(getApplication(), rating.totalBonusXp)
+            _levelInfo.value = newLevelInfo
+            if (leveledUp) {
+                soundManager.playLevelUp()
+                val newTitle = TitlesManager.ALL_TITLES.firstOrNull { it.requiredLevel == newLevelInfo.level }
+                _levelUpCelebration.value = Pair(newLevelInfo, newTitle)
+            }
+            _unlockedTitles.value = TitlesManager.getAllUnlockedTitleIds(getApplication())
+
+            // Save Best Ghost run if victorious
+            val playerPawnMoves = finalState.eventHistory
+                .filterIsInstance<GameEvent.PawnMoved>()
+                .filter { it.player == localPlayerId }
+                .map { it.to }
+            if (finalState.winner == localPlayerId && playerPawnMoves.isNotEmpty()) {
+                GhostManager.saveIfBestGhost(getApplication(), duration, playerPawnMoves.size, playerPawnMoves)
+                _ghostTrajectory.value = playerPawnMoves
+            }
         }
     }
 
@@ -1537,6 +1687,14 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         soundManager.playButton()
     }
 
+    fun setReplaySpeed(speed: Float) {
+        _replaySpeed.value = speed
+        if (_isReplayPlaying.value) {
+            toggleReplayPlay()
+            toggleReplayPlay()
+        }
+    }
+
     fun toggleReplayPlay() {
         val next = !_isReplayPlaying.value
         _isReplayPlaying.value = next
@@ -1544,7 +1702,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             replayJob?.cancel()
             replayJob = viewModelScope.launch {
                 while (_isReplayPlaying.value) {
-                    delay(1000)
+                    val delayMs = ((1000L / _replaySpeed.value.coerceAtLeast(0.1f))).toLong()
+                    delay(delayMs)
                     val engine = _currentReplayEngine.value ?: break
                     if (_currentReplayStep.value < engine.totalSteps) {
                         _currentReplayStep.value += 1
@@ -1558,5 +1717,340 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
         } else {
             replayJob?.cancel()
         }
+    }
+
+    // ==========================================
+    // POWER-UPS & TIME REWIND
+    // ==========================================
+
+    fun usePowerUp(type: PowerUpType) {
+        val current = _gameState.value ?: return
+        if (current.status != GameStatus.IN_PROGRESS) return
+        val localPlayerId = if (isP2PActiveMatch && !isP2PHost) PlayerId.PLAYER_2 else PlayerId.PLAYER_1
+        if (current.currentTurn != localPlayerId) return
+
+        if (type == PowerUpType.TIME_REWIND) {
+            executeTimeRewind()
+            return
+        }
+
+        val (newState, message) = PowerUpManager.applyPowerUp(current, localPlayerId, type)
+        if (newState != current) {
+            _gameState.value = newState
+            soundManager.playPowerUp()
+            _activeFeedback.value = message
+            viewModelScope.launch {
+                delay(1800)
+                _activeFeedback.value = null
+            }
+            if (newState.status == GameStatus.FINISHED) {
+                handleGameFinished(newState)
+            } else if (newState.currentTurn != localPlayerId) {
+                checkTriggerAI(newState)
+            }
+        } else {
+            soundManager.playInvalid()
+            _activeFeedback.value = message
+            viewModelScope.launch {
+                delay(1800)
+                _activeFeedback.value = null
+            }
+        }
+    }
+
+    fun executeTimeRewind() {
+        val current = _gameState.value ?: return
+        if (current.status != GameStatus.IN_PROGRESS) return
+        if (current.rules.mode != GameMode.VS_AI && current.rules.mode != GameMode.QUICK_MATCH) {
+            soundManager.playInvalid()
+            return
+        }
+        val p1 = current.player1
+        if (p1.rewindCharges <= 0) {
+            soundManager.playInvalid()
+            return
+        }
+
+        aiJob?.cancel()
+        val events = current.eventHistory
+        if (events.isEmpty()) {
+            soundManager.playInvalid()
+            return
+        }
+
+        val numToRevert = if (events.size >= 2) 2 else 1
+        val remainingEvents = events.dropLast(numToRevert)
+
+        var restoredState = GameEngine.createInitialState(
+            rules = current.rules,
+            player1Name = current.player1.name,
+            player2Name = current.player2.name,
+            player1Avatar = current.player1.avatarId,
+            player2Avatar = current.player2.avatarId,
+            player2IsAI = current.player2.isAI
+        ).copy(
+            obstacles = current.obstacles
+        )
+
+        for (event in remainingEvents) {
+            when (event) {
+                is GameEvent.PawnMoved -> {
+                    restoredState = GameEngine.makeMove(restoredState, event.to, event.player)
+                }
+                is GameEvent.WallPlaced -> {
+                    restoredState = GameEngine.placeWall(restoredState, event.wall, event.player)
+                }
+                else -> {}
+            }
+        }
+
+        val updatedP1 = restoredState.player1.copy(
+            rewindCharges = p1.rewindCharges - 1,
+            energy = p1.energy
+        )
+
+        _gameState.value = restoredState.copy(
+            player1 = updatedP1,
+            currentTurn = PlayerId.PLAYER_1,
+            status = GameStatus.IN_PROGRESS
+        )
+
+        soundManager.playGlitchRewind()
+        _isGlitchActive.value = true
+        viewModelScope.launch {
+            delay(550)
+            _isGlitchActive.value = false
+        }
+    }
+
+    // ==========================================
+    // TITLES SYSTEM
+    // ==========================================
+
+    fun equipTitle(titleId: String) {
+        TitlesManager.setEquippedTitle(getApplication(), titleId)
+        _equippedTitle.value = TitlesManager.getEquippedTitle(getApplication())
+        soundManager.playButton()
+    }
+
+    fun dismissLevelUp() {
+        _levelUpCelebration.value = null
+    }
+
+    fun dismissMatchRating() {
+        _matchRating.value = null
+    }
+
+    fun setGhostEnabled(enabled: Boolean) {
+        GhostManager.setGhostEnabled(getApplication(), enabled)
+        _isGhostEnabled.value = enabled
+    }
+
+    // ==========================================
+    // LEVEL EDITOR & CUSTOM MAPS
+    // ==========================================
+
+    fun loadCustomLevels() {
+        viewModelScope.launch {
+            repository.allCustomLevels.collect { entities ->
+                val customLoaded = entities.mapNotNull {
+                    CustomMapPresets.deserializeFromJson(it.jsonContent)
+                }
+                _customLevels.value = CustomMapPresets.PRESET_MAPS + customLoaded
+            }
+        }
+    }
+
+    fun saveCustomLevel(level: CustomLevel) {
+        viewModelScope.launch {
+            val json = CustomMapPresets.serializeToJson(level)
+            val entity = CustomLevelEntity(
+                id = level.id,
+                name = level.name,
+                description = level.description,
+                gridSize = level.gridSize,
+                jsonContent = json
+            )
+            repository.saveCustomLevel(entity)
+            soundManager.playButton()
+        }
+    }
+
+    fun deleteCustomLevel(levelId: String) {
+        viewModelScope.launch {
+            repository.deleteCustomLevel(levelId)
+            soundManager.playButton()
+        }
+    }
+
+    fun startCustomLevelMatch(level: CustomLevel) {
+        val gSize = level.gridSize.coerceAtLeast(3)
+        val p1Goal = if (level.p1Start.y > gSize / 2) 0 else gSize - 1
+        val p2Goal = if (level.p2Start.y < gSize / 2) gSize - 1 else 0
+
+        val rules = GameRules(
+            wallsPerPlayer = level.wallsCount,
+            timeLimitSeconds = level.timeLimitSeconds,
+            mode = GameMode.VS_AI,
+            aiDifficulty = level.aiDifficulty,
+            gridSize = gSize
+        )
+        val opponent = NPCProfile(
+            id = "custom_bot",
+            name = "Tactical Bot",
+            avatarId = 2,
+            personality = level.aiPersonality,
+            countryFlag = "🤖",
+            countryName = "Cyber Arena",
+            rating = 1400,
+            minThinkingDelayMs = 800L,
+            maxThinkingDelayMs = 1500L
+        )
+        _activeNPC.value = opponent
+
+        val safeP1Start = if (level.obstacles.any { it.x == level.p1Start.x && it.y == level.p1Start.y }) {
+            Position(gSize / 2, gSize - 1)
+        } else level.p1Start
+
+        val safeP2Start = if (level.obstacles.any { it.x == level.p2Start.x && it.y == level.p2Start.y } || safeP1Start == level.p2Start) {
+            Position(gSize / 2, 0)
+        } else level.p2Start
+
+        val initial = GameEngine.createInitialState(
+            rules = rules,
+            player1Name = _userProfile.value.username,
+            player2Name = opponent.name,
+            player1Avatar = _userProfile.value.avatarId,
+            player2Avatar = opponent.avatarId,
+            player2IsAI = true
+        ).copy(
+            obstacles = level.obstacles,
+            player1 = PlayerState(
+                id = PlayerId.PLAYER_1,
+                name = _userProfile.value.username,
+                avatarId = _userProfile.value.avatarId,
+                position = safeP1Start,
+                remainingWalls = level.wallsCount,
+                targetGoalRow = p1Goal
+            ),
+            player2 = PlayerState(
+                id = PlayerId.PLAYER_2,
+                name = opponent.name,
+                avatarId = opponent.avatarId,
+                position = safeP2Start,
+                remainingWalls = level.wallsCount,
+                isAI = true,
+                targetGoalRow = p2Goal
+            ),
+            moveCount = 0
+        )
+
+        // Filter and safely add preset walls without isolating players
+        var validWalls = emptyList<Wall>()
+        for (w in level.presetWalls) {
+            if (w.x in 0 until (gSize - 1) && w.y in 0 until (gSize - 1)) {
+                val candidate = validWalls + w
+                val p1HasPath = com.example.wallrush.domain.engine.PathFinder.hasPathToGoal(safeP1Start, p1Goal, candidate, gSize, level.obstacles)
+                val p2HasPath = com.example.wallrush.domain.engine.PathFinder.hasPathToGoal(safeP2Start, p2Goal, candidate, gSize, level.obstacles)
+                if (p1HasPath && p2HasPath) {
+                    validWalls = candidate
+                }
+            }
+        }
+
+        val stateWithWalls = initial.copy(walls = validWalls)
+
+        _gameState.value = stateWithWalls
+        _localPlayerId.value = PlayerId.PLAYER_1
+        _selectedPawn.value = PlayerId.PLAYER_1
+        _isWallMode.value = false
+        _previewWall.value = null
+        matchStartTime = System.currentTimeMillis()
+        navigateTo(ScreenState.MATCH)
+        startTimerLoop()
+    }
+
+    // ==========================================
+    // DAILY CHALLENGE DIRECT LAUNCH
+    // ==========================================
+
+    fun startDailyChallengeDirectly(challenge: DailyChallenge) {
+        val rules = when (challenge.id) {
+            "daily_race" -> GameRules(
+                mode = GameMode.RACE_MODE,
+                aiDifficulty = AIDifficulty.HARD,
+                timeLimitSeconds = 60,
+                wallsPerPlayer = 8
+            )
+            "daily_quad" -> GameRules(
+                mode = GameMode.QUAD_MODE,
+                aiDifficulty = AIDifficulty.HARD,
+                timeLimitSeconds = 90,
+                wallsPerPlayer = 6
+            )
+            "daily_walls" -> GameRules(
+                mode = GameMode.VS_AI,
+                aiDifficulty = AIDifficulty.NORMAL,
+                timeLimitSeconds = 180,
+                wallsPerPlayer = 12
+            )
+            "daily_ai" -> GameRules(
+                mode = GameMode.VS_AI,
+                aiDifficulty = AIDifficulty.EXPERT,
+                timeLimitSeconds = 120,
+                wallsPerPlayer = 10
+            )
+            else -> GameRules(
+                mode = GameMode.VS_AI,
+                aiDifficulty = AIDifficulty.values().random(),
+                timeLimitSeconds = listOf(60, 90, 120, 180).random(),
+                wallsPerPlayer = (6..12).random()
+            )
+        }
+        val opponent = NPCManager.getRandomOpponent(getApplication(), rules.aiDifficulty)
+        startMatch(
+            rules = rules,
+            player2Name = "${opponent.countryFlag} ${opponent.name}",
+            player2Avatar = opponent.avatarId,
+            player2IsAI = true,
+            npcProfile = opponent
+        )
+    }
+
+    // ==========================================
+    // BACKUP & RESTORE
+    // ==========================================
+
+    fun exportBackup(): String {
+        return BackupRestoreManager.createBackupString(getApplication(), _userProfile.value)
+    }
+
+    fun importBackup(backupContent: String): Boolean {
+        val result = BackupRestoreManager.restoreFromBackupString(getApplication(), backupContent)
+        val isAr = _settings.value.language == AppLanguage.ARABIC
+        return when (result) {
+            is com.example.wallrush.domain.backup.RestoreResult.Success -> {
+                _userProfile.value = result.profile
+                _levelInfo.value = ProgressionManager.getLevelInfo(ProgressionManager.getTotalXp(getApplication()))
+                _unlockedTitles.value = TitlesManager.getAllUnlockedTitleIds(getApplication())
+                _equippedTitle.value = TitlesManager.getEquippedTitle(getApplication())
+                _backupRestoreMessage.value = if (isAr) "تمت استعادة ملف الحفظ بنجاح!" else "Save restored successfully!"
+                soundManager.playLevelUp()
+                true
+            }
+            is com.example.wallrush.domain.backup.RestoreResult.Error -> {
+                _backupRestoreMessage.value = if (isAr) result.messageAr else result.messageEn
+                soundManager.playInvalid()
+                false
+            }
+        }
+    }
+
+    fun clearBackupMessage() {
+        _backupRestoreMessage.value = null
+    }
+
+    fun dismissLevelUpCelebration() {
+        _levelUpCelebration.value = null
     }
 }

@@ -53,3 +53,8 @@ val TextSecondary = Color(0xFF94A3B8)
 val DangerRed = Color(0xFFEF4444)
 val ErrorRed = Color(0xFFEF4444)
 val SuccessGreen = Color(0xFF22C55E)
+val NeonCyan = Color(0xFF00D2FF)
+val NeonYellow = Color(0xFFFDE047)
+val SurfaceElevated = Color(0xFF25334E)
+val BoardBackground = Color(0xFF0F172A)
+

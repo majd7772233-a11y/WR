@@ -29,3 +29,19 @@ interface ProfileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveProfile(profile: PlayerProfile)
 }
+
+@Dao
+interface CustomLevelDao {
+    @Query("SELECT * FROM custom_levels ORDER BY createdAt DESC")
+    fun getAllLevelsFlow(): Flow<List<CustomLevelEntity>>
+
+    @Query("SELECT * FROM custom_levels WHERE id = :id LIMIT 1")
+    suspend fun getLevelById(id: String): CustomLevelEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveLevel(level: CustomLevelEntity)
+
+    @Query("DELETE FROM custom_levels WHERE id = :id")
+    suspend fun deleteLevel(id: String)
+}
+

@@ -141,6 +141,39 @@ object AchievementManager {
             rewardXp = 200
         ),
         Achievement(
+            id = "ai_expert_win",
+            titleKey = "ach_expert_ai_title",
+            descKey = "ach_expert_ai_desc",
+            icon = "🟣",
+            category = AchievementCategory.COMBAT,
+            targetCount = 1,
+            currentProgress = 0,
+            isUnlocked = false,
+            rewardXp = 300
+        ),
+        Achievement(
+            id = "ai_nightmare_win",
+            titleKey = "ach_nightmare_ai_title",
+            descKey = "ach_nightmare_ai_desc",
+            icon = "💀",
+            category = AchievementCategory.COMBAT,
+            targetCount = 1,
+            currentProgress = 0,
+            isUnlocked = false,
+            rewardXp = 450
+        ),
+        Achievement(
+            id = "ai_insane_win",
+            titleKey = "ach_insane_ai_title",
+            descKey = "ach_insane_ai_desc",
+            icon = "⚡",
+            category = AchievementCategory.COMBAT,
+            targetCount = 1,
+            currentProgress = 0,
+            isUnlocked = false,
+            rewardXp = 600
+        ),
+        Achievement(
             id = "flawless_victory",
             titleKey = "ach_flawless_title",
             descKey = "ach_flawless_desc",
@@ -380,17 +413,6 @@ object AchievementManager {
 
         // ================= SECRETS & SPECIAL =================
         Achievement(
-            id = "secret_glitch_master",
-            titleKey = "ach_glitch_title",
-            descKey = "ach_glitch_desc",
-            icon = "🔓",
-            category = AchievementCategory.SECRET,
-            targetCount = 1,
-            currentProgress = 0,
-            isUnlocked = false,
-            rewardXp = 350
-        ),
-        Achievement(
             id = "night_owl",
             titleKey = "ach_night_owl_title",
             descKey = "ach_night_owl_desc",
@@ -523,6 +545,9 @@ object AchievementManager {
                     AIDifficulty.EASY -> checkAndUnlock("ai_easy_win")
                     AIDifficulty.MEDIUM -> checkAndUnlock("ai_medium_win")
                     AIDifficulty.HARD -> checkAndUnlock("ai_hard_win")
+                    AIDifficulty.EXPERT -> checkAndUnlock("ai_expert_win")
+                    AIDifficulty.NIGHTMARE -> checkAndUnlock("ai_nightmare_win")
+                    AIDifficulty.INSANE -> checkAndUnlock("ai_insane_win")
                 }
             }
 
@@ -556,21 +581,6 @@ object AchievementManager {
     fun recordProfileCustomization(context: Context, onUnlocked: (Achievement) -> Unit) {
         val prefs = getPrefs(context)
         val id = "fashion_icon"
-        val alreadyUnlocked = prefs.getBoolean(KEY_PREFIX_UNLOCKED + id, false)
-        if (!alreadyUnlocked) {
-            prefs.edit()
-                .putBoolean(KEY_PREFIX_UNLOCKED + id, true)
-                .putInt(KEY_PREFIX_PROGRESS + id, 1)
-                .putLong(KEY_PREFIX_TIMESTAMP + id, System.currentTimeMillis())
-                .apply()
-            val template = ACHIEVEMENT_TEMPLATES.find { it.id == id } ?: return
-            onUnlocked(template.copy(isUnlocked = true, currentProgress = 1))
-        }
-    }
-
-    fun unlockSecretGlitch(context: Context, onUnlocked: (Achievement) -> Unit) {
-        val prefs = getPrefs(context)
-        val id = "secret_glitch_master"
         val alreadyUnlocked = prefs.getBoolean(KEY_PREFIX_UNLOCKED + id, false)
         if (!alreadyUnlocked) {
             prefs.edit()

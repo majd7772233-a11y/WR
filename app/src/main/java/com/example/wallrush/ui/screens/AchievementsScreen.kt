@@ -38,6 +38,7 @@ import com.example.wallrush.domain.model.Achievement
 import com.example.wallrush.domain.model.AchievementCategory
 import com.example.wallrush.domain.model.DailyChallenge
 import com.example.wallrush.domain.notifications.SmartNotificationHelper
+import com.example.wallrush.ui.localization.AppLanguage
 import com.example.wallrush.ui.localization.Strings
 import com.example.wallrush.ui.viewmodel.ScreenState
 import com.example.wallrush.ui.viewmodel.WallRushViewModel
@@ -54,6 +55,9 @@ fun AchievementsScreen(
 
     val achievements by viewModel.achievements.collectAsState()
     val dailyChallenges by viewModel.dailyChallenges.collectAsState()
+    val levelInfo by viewModel.levelInfo.collectAsState()
+    val equippedTitle by viewModel.equippedTitle.collectAsState()
+    val unlockedTitles by viewModel.unlockedTitles.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Daily Challenges, 1: Achievements
     var selectedCategoryFilter by remember { mutableStateOf<AchievementCategory?>(null) }
@@ -132,6 +136,147 @@ fun AchievementsScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)
             ) {
+                // Player Level & XP Progress Card
+                item {
+                    val isAr = language == AppLanguage.ARABIC
+                    val tierTitle = if (isAr) com.example.wallrush.domain.progression.ProgressionManager.getTierTitleArabic(levelInfo.level) else levelInfo.title
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .border(1.dp, GoldRating.copy(alpha = 0.35f), RoundedCornerShape(18.dp)),
+                        color = SurfaceCard,
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(GoldRating.copy(alpha = 0.2f))
+                                            .border(1.5.dp, GoldRating, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "${levelInfo.level}",
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = GoldRating
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = if (isAr) "المستوى ${levelInfo.level}" else "Level ${levelInfo.level}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Black,
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            text = tierTitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Player1Primary
+                                        )
+                                    }
+                                }
+
+                                // Equipped Title Pill
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = SurfaceCardLight,
+                                    modifier = Modifier
+                                        .clickable { viewModel.navigateTo(ScreenState.TITLES) }
+                                        .border(1.dp, GoldRating.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(text = equippedTitle.icon, fontSize = 14.sp)
+                                        Text(
+                                            text = if (isAr) equippedTitle.nameAr else equippedTitle.nameEn,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = GoldRating
+                                        )
+                                    }
+                                }
+                            }
+
+                            // XP Progress Bar
+                            val earnedInLevel = levelInfo.currentXp - levelInfo.xpForCurrentLevel
+                            val neededInLevel = (levelInfo.xpForNextLevel - levelInfo.xpForCurrentLevel).coerceAtLeast(1L)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = if (isAr) "التقدم للمستوى القادم" else "Progress to next level",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary
+                                    )
+                                    Text(
+                                        text = "$earnedInLevel / $neededInLevel XP (${(levelInfo.progress * 100).toInt()}%)",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GoldRating
+                                    )
+                                }
+                                LinearProgressIndicator(
+                                    progress = { levelInfo.progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(7.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    color = GoldRating,
+                                    trackColor = CellBorder
+                                )
+                            }
+
+                            // Action Button: Open Titles System
+                            Button(
+                                onClick = { viewModel.navigateTo(ScreenState.TITLES) },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SurfaceCardLight,
+                                    contentColor = TextPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, CellBorder, RoundedCornerShape(12.dp))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(text = "🎖️", fontSize = 16.sp)
+                                    Text(
+                                        text = if (isAr) "نظام الألقاب والشارات (${unlockedTitles.size} مفتوح)" else "Titles & Badges System (${unlockedTitles.size} Unlocked)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Tab Selection (Daily Quests vs Achievements)
                 item {
                     TabRow(
@@ -545,12 +690,20 @@ private fun DailyChallengeCard(
                             com.example.wallrush.domain.model.AIDifficulty.EASY -> Strings.get("diff_easy", language)
                             com.example.wallrush.domain.model.AIDifficulty.MEDIUM -> Strings.get("diff_medium", language)
                             com.example.wallrush.domain.model.AIDifficulty.HARD -> Strings.get("diff_hard", language)
+                            com.example.wallrush.domain.model.AIDifficulty.EXPERT -> Strings.get("expert", language)
+                            com.example.wallrush.domain.model.AIDifficulty.NIGHTMARE -> Strings.get("nightmare", language)
+                            com.example.wallrush.domain.model.AIDifficulty.INSANE -> Strings.get("insane", language)
+                            else -> challenge.launchAiDifficulty.name
                         },
                         fontSize = 10.sp,
                         color = when (challenge.launchAiDifficulty) {
-                            com.example.wallrush.domain.model.AIDifficulty.HARD -> Player2Primary
+                            com.example.wallrush.domain.model.AIDifficulty.HARD,
+                            com.example.wallrush.domain.model.AIDifficulty.EXPERT -> Player2Primary
+                            com.example.wallrush.domain.model.AIDifficulty.NIGHTMARE,
+                            com.example.wallrush.domain.model.AIDifficulty.INSANE -> Color(0xFFA78BFA)
                             com.example.wallrush.domain.model.AIDifficulty.MEDIUM -> GoldRating
                             com.example.wallrush.domain.model.AIDifficulty.EASY -> Player3Primary
+                            else -> Player1Primary
                         },
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                     )

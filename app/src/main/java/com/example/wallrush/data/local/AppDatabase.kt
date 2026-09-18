@@ -39,14 +39,15 @@ class Converters {
 }
 
 @Database(
-    entities = [MatchRecord::class, PlayerProfile::class],
-    version = 1,
+    entities = [MatchRecord::class, PlayerProfile::class, CustomLevelEntity::class],
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun matchDao(): MatchDao
     abstract fun profileDao(): ProfileDao
+    abstract fun customLevelDao(): CustomLevelDao
 
     companion object {
         @Volatile

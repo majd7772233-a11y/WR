@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +32,8 @@ import com.example.ui.theme.*
 import com.example.wallrush.domain.model.AIDifficulty
 import com.example.wallrush.domain.model.GameMode
 import com.example.wallrush.domain.model.GameRules
+import com.example.wallrush.domain.npc.NPCManager
+import com.example.wallrush.domain.npc.NPCPersonality
 import com.example.wallrush.ui.localization.AppLanguage
 import com.example.wallrush.ui.localization.Strings
 import com.example.wallrush.ui.viewmodel.ScreenState
@@ -45,14 +48,16 @@ fun HomeScreen(
     val profile by viewModel.userProfile.collectAsState()
     val showNoInternet by viewModel.showNoInternetDialog.collectAsState()
     val isQuickMatchSearching by viewModel.isQuickMatchSearching.collectAsState()
-    val isBypassActive by viewModel.isOfflineBypassGlitchActive.collectAsState()
     val language = settings.language
+    val context = LocalContext.current
 
     var showQuickMatchDialog by remember { mutableStateOf(false) }
     var showAiDialog by remember { mutableStateOf(false) }
     var showPassAndPlayDialog by remember { mutableStateOf(false) }
 
     var selectedAiDifficulty by remember { mutableStateOf(AIDifficulty.MEDIUM) }
+    var aiSelectionTab by remember { mutableStateOf(0) } // 0 = Difficulty, 1 = Personality
+    var selectedAiPersonality by remember { mutableStateOf(NPCPersonality.THE_RUSHER) }
     var selectedAiMode by remember { mutableStateOf(GameMode.VS_AI) }
     var selectedPassPlayMode by remember { mutableStateOf(GameMode.PASS_AND_PLAY) }
     var selectedWallsCount by remember { mutableStateOf(10) }
@@ -193,7 +198,7 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 showQuickMatchDialog = false
-                                viewModel.onQuickMatchClicked(GameMode.QUICK_MATCH, bypassGlitch = isBypassActive)
+                                viewModel.onQuickMatchClicked(GameMode.QUICK_MATCH)
                             }
                             .border(1.dp, Player1Primary.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                         color = Color(0xFF0C4A6E).copy(alpha = 0.4f),
@@ -232,7 +237,7 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 showQuickMatchDialog = false
-                                viewModel.onQuickMatchClicked(GameMode.RACE_MODE, bypassGlitch = isBypassActive)
+                                viewModel.onQuickMatchClicked(GameMode.RACE_MODE)
                             }
                             .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                         color = Color(0xFF451A03).copy(alpha = 0.4f),
@@ -271,7 +276,7 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .clickable {
                                 showQuickMatchDialog = false
-                                viewModel.onQuickMatchClicked(GameMode.QUAD_MODE, bypassGlitch = isBypassActive)
+                                viewModel.onQuickMatchClicked(GameMode.QUAD_MODE)
                             }
                             .border(1.dp, Color(0xFF10B981).copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                         color = Color(0xFF064E3B).copy(alpha = 0.4f),
@@ -376,35 +381,179 @@ fun HomeScreen(
                         }
                     }
 
-                    // Difficulty selection
-                    Text(
-                        text = Strings.get("select_difficulty", language),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    // Selection Tabs: Difficulty Levels vs AI Personalities
+                    TabRow(
+                        selectedTabIndex = aiSelectionTab,
+                        containerColor = SurfaceCardLight,
+                        contentColor = Color(0xFFA78BFA),
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp))
                     ) {
-                        AIDifficulty.values().forEach { diff ->
-                            val isSelected = selectedAiDifficulty == diff
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedAiDifficulty = diff },
-                                label = {
-                                    Text(
-                                        text = when (diff) {
-                                            AIDifficulty.EASY -> "🟢 " + Strings.get("easy", language)
-                                            AIDifficulty.MEDIUM -> "🟡 " + Strings.get("medium", language)
-                                            AIDifficulty.HARD -> "🔴 " + Strings.get("hard", language)
+                        Tab(
+                            selected = aiSelectionTab == 0,
+                            onClick = { aiSelectionTab = 0 },
+                            text = {
+                                Text(
+                                    text = Strings.get("ai_difficulties_tab", language),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (aiSelectionTab == 0) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                        Tab(
+                            selected = aiSelectionTab == 1,
+                            onClick = { aiSelectionTab = 1 },
+                            text = {
+                                Text(
+                                    text = Strings.get("ai_personalities_tab", language),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (aiSelectionTab == 1) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
+
+                    if (aiSelectionTab == 0) {
+                        // All 6 Real Difficulty Levels
+                        Text(
+                            text = Strings.get("select_difficulty", language),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+
+                        // 2 rows of 3 chips each
+                        val diffs = AIDifficulty.values()
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                diffs.take(3).forEach { diff ->
+                                    val isSelected = selectedAiDifficulty == diff
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedAiDifficulty = diff },
+                                        label = {
+                                            Text(
+                                                text = when (diff) {
+                                                    AIDifficulty.EASY -> "🟢 " + Strings.get("easy", language)
+                                                    AIDifficulty.MEDIUM -> "🟡 " + Strings.get("medium", language)
+                                                    AIDifficulty.HARD -> "🔴 " + Strings.get("hard", language)
+                                                    else -> diff.name
+                                                },
+                                                fontSize = 11.sp,
+                                                maxLines = 1
+                                            )
                                         },
-                                        fontSize = 11.sp,
-                                        maxLines = 1
+                                        modifier = Modifier.weight(1f)
                                     )
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                diffs.drop(3).forEach { diff ->
+                                    val isSelected = selectedAiDifficulty == diff
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedAiDifficulty = diff },
+                                        label = {
+                                            Text(
+                                                text = when (diff) {
+                                                    AIDifficulty.EXPERT -> "🟣 " + Strings.get("expert", language)
+                                                    AIDifficulty.NIGHTMARE -> "💀 " + Strings.get("nightmare", language)
+                                                    AIDifficulty.INSANE -> "🤖 " + Strings.get("insane", language)
+                                                    else -> diff.name
+                                                },
+                                                fontSize = 11.sp,
+                                                maxLines = 1
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (selectedAiDifficulty == AIDifficulty.NIGHTMARE || selectedAiDifficulty == AIDifficulty.INSANE) {
+                            Surface(
+                                color = Color(0xFF7C3AED).copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("🧠", fontSize = 16.sp)
+                                    Text(
+                                        text = if (language == AppLanguage.ARABIC)
+                                            "الذكاء الاصطناعي يتعلم أسلوب هروبك ويغلق مسارك المفضل تلقائياً!"
+                                        else
+                                            "AI actively tracks your movement patterns and cuts off your preferred escape flank!",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // AI Personalities Selection
+                        val personalities = listOf(
+                            Triple(NPCPersonality.THE_RUSHER, Strings.get("persona_rusher_title", language), Strings.get("persona_rusher_desc", language)),
+                            Triple(NPCPersonality.THE_DEFENDER, Strings.get("persona_defender_title", language), Strings.get("persona_defender_desc", language)),
+                            Triple(NPCPersonality.THE_CHAOTIC, Strings.get("persona_chaotic_title", language), Strings.get("persona_chaotic_desc", language)),
+                            Triple(NPCPersonality.THE_PREDICTOR, Strings.get("persona_predictor_title", language), Strings.get("persona_predictor_desc", language)),
+                            Triple(NPCPersonality.THE_TRICKSTER, Strings.get("persona_trickster_title", language), Strings.get("persona_trickster_desc", language)),
+                            Triple(NPCPersonality.THE_TACTICIAN, Strings.get("persona_tactician_title", language), Strings.get("persona_tactician_desc", language))
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            personalities.forEach { (persona, title, desc) ->
+                                val isSelected = selectedAiPersonality == persona
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { selectedAiPersonality = persona }
+                                        .border(
+                                            width = if (isSelected) 1.5.dp else 0.5.dp,
+                                            color = if (isSelected) Color(0xFFA78BFA) else CellBorder,
+                                            shape = RoundedCornerShape(10.dp)
+                                        ),
+                                    color = if (isSelected) Color(0xFF8B5CF6).copy(alpha = 0.2f) else SurfaceCardLight,
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = { selectedAiPersonality = persona },
+                                            colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFA78BFA))
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = title,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = if (isSelected) Color(0xFFA78BFA) else TextPrimary
+                                            )
+                                            Text(
+                                                text = desc,
+                                                fontSize = 11.sp,
+                                                color = TextSecondary,
+                                                lineHeight = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -469,6 +618,20 @@ fun HomeScreen(
                                 player3IsAI = true,
                                 player4Name = "Bot Gamma (Yellow)",
                                 player4IsAI = true
+                            )
+                        } else if (aiSelectionTab == 1) {
+                            val npc = NPCManager.getOpponentWithPersonality(context, selectedAiPersonality, selectedAiDifficulty)
+                            viewModel.startMatch(
+                                rules = GameRules(
+                                    wallsPerPlayer = selectedWallsCount,
+                                    timeLimitSeconds = selectedTimeControl,
+                                    aiDifficulty = npc.toAIDifficulty(),
+                                    mode = selectedAiMode
+                                ),
+                                player2Name = npc.name,
+                                player2Avatar = npc.avatarId,
+                                player2IsAI = true,
+                                npcProfile = npc
                             )
                         } else {
                             viewModel.startMatch(
@@ -657,65 +820,21 @@ fun HomeScreen(
         )
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        containerColor = DeepSlateBackground,
-        bottomBar = {
-            NavigationBar(
-                containerColor = SurfaceCard,
-                tonalElevation = 8.dp
-            ) {
-                NavigationBarItem(
-                    selected = true,
-                    onClick = { viewModel.navigateTo(ScreenState.HOME) },
-                    icon = { Icon(Icons.Default.Home, contentDescription = Strings.get("app_name", language)) },
-                    label = { Text(Strings.get("app_name", language), fontWeight = FontWeight.Bold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Player1Primary,
-                        selectedTextColor = Player1Primary,
-                        indicatorColor = Player1Primary.copy(alpha = 0.2f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
-                    )
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { viewModel.navigateTo(ScreenState.LEADERBOARD) },
-                    icon = { Icon(Icons.Default.EmojiEvents, contentDescription = Strings.get("leaderboard", language)) },
-                    label = { Text(Strings.get("leaderboard", language)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
-                    )
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = { viewModel.navigateTo(ScreenState.PROFILE) },
-                    icon = { Icon(Icons.Default.Person, contentDescription = Strings.get("profile", language)) },
-                    label = { Text(Strings.get("profile", language)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
-                    )
-                )
-            }
-        }
-    ) { paddingValues ->
-        Box(
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(DeepSlateBackground),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            contentAlignment = Alignment.TopCenter
+                .widthIn(max = 680.dp)
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(vertical = 14.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 680.dp)
-                    .padding(horizontal = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(vertical = 14.dp)
-            ) {
-            // Header: Branding + Language Switcher + Settings
+            // Header: Branding
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -742,59 +861,6 @@ fun HomeScreen(
                             fontWeight = FontWeight.Medium,
                             color = TextSecondary
                         )
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Achievements & Daily Quests Icon
-                        IconButton(
-                            onClick = { viewModel.navigateTo(ScreenState.ACHIEVEMENTS) },
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(GoldRating.copy(alpha = 0.15f))
-                                .border(1.dp, GoldRating.copy(alpha = 0.4f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.EmojiEvents,
-                                contentDescription = Strings.get("achievements_title", language),
-                                tint = GoldRating,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // About App Icon
-                        IconButton(
-                            onClick = { viewModel.navigateTo(ScreenState.ABOUT) },
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Player1Primary.copy(alpha = 0.15f))
-                                .border(1.dp, Player1Primary.copy(alpha = 0.4f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = Strings.get("about", language),
-                                tint = Player1Primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        // Settings Icon (Full-screen)
-                        IconButton(
-                            onClick = { viewModel.navigateTo(ScreenState.SETTINGS) },
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(SurfaceCard)
-                                .border(1.dp, CellBorder, CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = Strings.get("settings", language),
-                                tint = TextPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
                     }
                 }
             }
@@ -884,11 +950,7 @@ fun HomeScreen(
                     badgeColor = Player1Primary,
                     icon = Icons.Default.Bolt,
                     gradientColors = listOf(Color(0xFF0C4A6E), SurfaceCard),
-                    onClick = { showQuickMatchDialog = true },
-                    onLongPress = {
-                        // Secret Glitch: Hold long-press to bypass network restrictions
-                        viewModel.onQuickMatchClicked(bypassGlitch = true)
-                    }
+                    onClick = { showQuickMatchDialog = true }
                 )
             }
 
@@ -901,11 +963,7 @@ fun HomeScreen(
                     badgeColor = Color(0xFF10B981),
                     icon = Icons.Default.Public,
                     gradientColors = listOf(Color(0xFF064E3B), SurfaceCard),
-                    onClick = { viewModel.onPlayOnlineClicked(bypassGlitch = false) },
-                    onLongPress = {
-                        // Secret Glitch: Hold long-press to bypass network restrictions
-                        viewModel.onPlayOnlineClicked(bypassGlitch = true)
-                    }
+                    onClick = { viewModel.onPlayOnlineClicked() }
                 )
             }
 
@@ -956,11 +1014,23 @@ fun HomeScreen(
                     badge = "TUTORIAL",
                     badgeColor = GoldRating,
                     icon = Icons.Default.MenuBook,
-                    gradientColors = listOf(Color(0xFF1E293B), SurfaceCard),
+                    gradientColors = listOf(Color(0xFF78350F), SurfaceCard),
                     onClick = { viewModel.navigateTo(ScreenState.TUTORIAL) }
                 )
             }
-        }
+
+            // 7. Custom Maps & Level Editor
+            item {
+                MenuGameCard(
+                    title = if (language == AppLanguage.ARABIC) "المصمم والخرائط المخصصة" else "Custom Maps & Level Editor",
+                    subtitle = if (language == AppLanguage.ARABIC) "صمم خرائط بأعمدة وجدران، شاركها، والعب مستويات فريدة" else "Create obstacle maps, edit levels & play custom arenas",
+                    badge = "EDITOR",
+                    badgeColor = Color(0xFF06B6D4),
+                    icon = Icons.Default.Edit,
+                    gradientColors = listOf(Color(0xFF0E7490), SurfaceCard),
+                    onClick = { viewModel.navigateTo(ScreenState.CUSTOM_MAPS) }
+                )
+            }
         }
     }
 }
@@ -973,25 +1043,13 @@ private fun MenuGameCard(
     badgeColor: Color,
     icon: ImageVector,
     gradientColors: List<Color>,
-    onClick: () -> Unit,
-    onLongPress: (() -> Unit)? = null
+    onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .then(
-                if (onLongPress != null) {
-                    Modifier.pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { onClick() },
-                            onLongPress = { onLongPress() }
-                        )
-                    }
-                } else {
-                    Modifier.clickable(onClick = onClick)
-                }
-            )
+            .clickable(onClick = onClick)
             .border(1.dp, CellBorder, RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         color = SurfaceCard

@@ -39,7 +39,8 @@ fun VictoryDialog(
     localPlayerId: PlayerId = PlayerId.PLAYER_1,
     onRematchClicked: () -> Unit,
     onReplayClicked: () -> Unit,
-    onHomeClicked: () -> Unit
+    onHomeClicked: () -> Unit,
+    onDismiss: (() -> Unit)? = null
 ) {
     val winner = state.winner ?: return
     val isPassAndPlay = state.rules.mode == GameMode.PASS_AND_PLAY
@@ -204,18 +205,52 @@ fun VictoryDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Next / Continue (if sequential onDismiss provided)
+                    if (onDismiss != null) {
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black)
+                        ) {
+                            Text(
+                                text = if (language == AppLanguage.ARABIC) "التالي (التقييم والترقية) ➔" else "Next (Rating & Rewards) ➔",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+
                     // Rematch
-                    Button(
-                        onClick = onRematchClicked,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black)
-                    ) {
-                        Icon(imageVector = Icons.Default.Replay, contentDescription = Strings.get("rematch", language))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = Strings.get("rematch", language), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    if (onDismiss == null) {
+                        Button(
+                            onClick = onRematchClicked,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black)
+                        ) {
+                            Icon(imageVector = Icons.Default.Replay, contentDescription = Strings.get("rematch", language))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = Strings.get("rematch", language), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onRematchClicked,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                        ) {
+                            Icon(imageVector = Icons.Default.Replay, contentDescription = Strings.get("rematch", language))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = Strings.get("rematch", language), fontWeight = FontWeight.SemiBold)
+                        }
                     }
 
                     // Replay

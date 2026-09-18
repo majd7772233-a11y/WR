@@ -42,3 +42,15 @@ data class PlayerProfile(
 ) {
     val winRatePercent: Int get() = if (totalMatches > 0) (wins * 100) / totalMatches else 0
 }
+
+@Entity(tableName = "custom_levels")
+data class CustomLevelEntity(
+    @PrimaryKey
+    val id: String,
+    val name: String,
+    val description: String,
+    val gridSize: Int,
+    val jsonContent: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+

@@ -1,6 +1,7 @@
 package com.example.wallrush.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -11,9 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.DeepSlateBackground
-import com.example.ui.theme.TextPrimary
+import androidx.compose.ui.unit.sp
+import com.example.ui.theme.*
 import com.example.wallrush.domain.engine.RuleEngine
 import com.example.wallrush.domain.model.GameMode
 import com.example.wallrush.domain.model.GameStatus
@@ -39,12 +41,24 @@ fun MatchScreen(
     val showResignDialog by viewModel.showResignDialog.collectAsState()
     val localPlayerId by viewModel.localPlayerId.collectAsState()
 
+    val ghostTrajectory by viewModel.ghostTrajectory.collectAsState()
+    val isGhostEnabled by viewModel.isGhostEnabled.collectAsState()
+    val activeFeedback by viewModel.activeFeedback.collectAsState()
+    val rewindCharges by viewModel.rewindCharges.collectAsState()
+    val matchRating by viewModel.matchRating.collectAsState()
+    val levelUpCelebration by viewModel.levelUpCelebration.collectAsState()
+
     val current = state ?: return
     val language = settings.language
+    val isRewindAllowed = current.rules.mode == GameMode.VS_AI || current.rules.mode == GameMode.RACE_MODE
 
     // Dynamic Board Flipping: Default to flipped for Player 2 so local pawn is at the bottom, or toggleable anytime
     var isFlipped by remember(localPlayerId) {
         mutableStateOf(localPlayerId == PlayerId.PLAYER_2)
+    }
+
+    var isVictoryDismissed by remember(current.matchId) {
+        mutableStateOf(false)
     }
 
     // Determine roles: Host/P1 (Blue) vs Guest/P2 (Red)
@@ -161,8 +175,30 @@ fun MatchScreen(
                                 onWallSlotClicked = { x, y -> viewModel.onWallSlotClicked(x, y) },
                                 theme = settings.theme,
                                 isFlipped = isFlipped,
+                                ghostTrajectory = ghostTrajectory,
+                                isGhostEnabled = isGhostEnabled,
                                 modifier = Modifier.fillMaxSize()
                             )
+
+                            // Floating Combo / Near-Miss Feedback Banner
+                            activeFeedback?.let { feedback ->
+                                Surface(
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                                    color = androidx.compose.ui.graphics.Color(0xFF0F172A).copy(alpha = 0.88f),
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 16.dp)
+                                        .border(1.5.dp, GoldRating, androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                                ) {
+                                    Text(
+                                        text = feedback,
+                                        fontSize = 14.sp,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                                        color = GoldRating,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
 
                             // Floating Emote Banner on Board
                             EmoteBanner(
@@ -223,7 +259,12 @@ fun MatchScreen(
                                     onConfirmWall = { viewModel.confirmWallPlacement() },
                                     onCancelWall = { viewModel.cancelWallPlacement() },
                                     onResignClicked = { viewModel.showResignConfirm(true) },
-                                    onSendEmote = { emoji -> viewModel.sendEmote(emoji) }
+                                    onSendEmote = { emoji -> viewModel.sendEmote(emoji) },
+                                    onUsePowerUp = { powerUp -> viewModel.usePowerUp(powerUp) },
+                                    onRewind = { viewModel.executeTimeRewind() },
+                                    isRewindAllowed = isRewindAllowed,
+                                    rewindCharges = rewindCharges,
+                                    currentEnergy = userPlayer.energy
                                 )
                             }
                         }
@@ -389,8 +430,30 @@ fun MatchScreen(
                                 onWallSlotClicked = { x, y -> viewModel.onWallSlotClicked(x, y) },
                                 theme = settings.theme,
                                 isFlipped = isFlipped,
+                                ghostTrajectory = ghostTrajectory,
+                                isGhostEnabled = isGhostEnabled,
                                 modifier = Modifier.fillMaxSize()
                             )
+
+                            // Floating Combo / Near-Miss Feedback Banner
+                            activeFeedback?.let { feedback ->
+                                Surface(
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                                    color = androidx.compose.ui.graphics.Color(0xFF0F172A).copy(alpha = 0.88f),
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 16.dp)
+                                        .border(1.5.dp, GoldRating, androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                                ) {
+                                    Text(
+                                        text = feedback,
+                                        fontSize = 14.sp,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                                        color = GoldRating,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
 
                             // Floating Emote Banner on Board
                             EmoteBanner(
@@ -426,7 +489,12 @@ fun MatchScreen(
                                 onConfirmWall = { viewModel.confirmWallPlacement() },
                                 onCancelWall = { viewModel.cancelWallPlacement() },
                                 onResignClicked = { viewModel.showResignConfirm(true) },
-                                onSendEmote = { emoji -> viewModel.sendEmote(emoji) }
+                                onSendEmote = { emoji -> viewModel.sendEmote(emoji) },
+                                onUsePowerUp = { powerUp -> viewModel.usePowerUp(powerUp) },
+                                onRewind = { viewModel.executeTimeRewind() },
+                                isRewindAllowed = isRewindAllowed,
+                                rewindCharges = rewindCharges,
+                                currentEnergy = userPlayer.energy
                             )
                         }
                     }
@@ -439,25 +507,61 @@ fun MatchScreen(
             CountdownOverlay(secondsRemaining = current.countdownSeconds)
         }
 
-        // Overlay 2: Victory / Defeat Modal
-        if (current.status == GameStatus.FINISHED) {
+        // Sequential Match End Overlays (Win/Loss -> Level Up -> Rating)
+        // 1. Victory / Defeat Modal shown first
+        if (current.status == GameStatus.FINISHED && !isVictoryDismissed) {
             VictoryDialog(
                 state = current,
                 language = language,
                 localPlayerId = localPlayerId,
-                onRematchClicked = { viewModel.startRematch() },
-                onReplayClicked = { viewModel.openReplayForCurrentMatch() },
-                onHomeClicked = { viewModel.navigateTo(ScreenState.HOME) }
+                onRematchClicked = {
+                    isVictoryDismissed = true
+                    viewModel.startRematch()
+                },
+                onReplayClicked = {
+                    isVictoryDismissed = true
+                    viewModel.openReplayForCurrentMatch()
+                },
+                onHomeClicked = {
+                    isVictoryDismissed = true
+                    viewModel.navigateTo(ScreenState.HOME)
+                },
+                onDismiss = if (levelUpCelebration != null || matchRating != null) {
+                    { isVictoryDismissed = true }
+                } else null
             )
         }
 
-        // Overlay 3: Resign Confirmation Dialog
+        // 2. Resign Confirmation Dialog
         if (showResignDialog) {
             ResignConfirmDialog(
                 language = language,
                 onConfirm = { viewModel.resignMatch() },
                 onDismiss = { viewModel.showResignConfirm(false) }
             )
+        }
+
+        // 3. Level-Up Celebration Dialog (appears after Victory is dismissed, if player leveled up)
+        if (isVictoryDismissed) {
+            levelUpCelebration?.let { (info, title) ->
+                LevelUpCelebrationDialog(
+                    levelInfo = info,
+                    newTitle = title,
+                    language = language,
+                    onDismiss = { viewModel.dismissLevelUpCelebration() }
+                )
+            }
+        }
+
+        // 4. Match Performance Rating Dialog (appears after Victory and Level-Up are dismissed)
+        if (isVictoryDismissed && levelUpCelebration == null) {
+            matchRating?.let { rating ->
+                MatchRatingDialog(
+                    rating = rating,
+                    language = language,
+                    onDismiss = { viewModel.dismissMatchRating() }
+                )
+            }
         }
     }
 }

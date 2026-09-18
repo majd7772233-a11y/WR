@@ -36,7 +36,9 @@ fun GameBoardCanvas(
     onWallSlotClicked: (x: Int, y: Int) -> Unit,
     modifier: Modifier = Modifier,
     theme: GameTheme = GameTheme.MainCyberNeon,
-    isFlipped: Boolean = false
+    isFlipped: Boolean = false,
+    ghostTrajectory: List<Position> = emptyList(),
+    isGhostEnabled: Boolean = false
 ) {
     // Pulse animation for turn indicator / legal move dots
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -73,11 +75,15 @@ fun GameBoardCanvas(
                     if (!isLocalTurn) return@pointerInput
 
                     detectTapGestures { offset ->
+                        val gridSize = state.rules.gridSize.coerceAtLeast(3)
+                        val maxCoord = gridSize - 1
+                        val maxWallCoord = gridSize - 2
+
                         val w = kotlin.math.min(size.width, size.height).toFloat()
                         val padding = w * 0.032f
                         val playableWidth = w - (padding * 2)
-                        val gap = playableWidth * 0.028f
-                        val cellSize = (playableWidth - (gap * 8)) / 9f
+                        val gap = playableWidth * (0.25f / gridSize)
+                        val cellSize = (playableWidth - (gap * maxCoord)) / gridSize.toFloat()
                         val step = cellSize + gap
 
                         val localX = offset.x - padding
@@ -87,15 +93,15 @@ fun GameBoardCanvas(
 
                         // Check if tap was near a wall slot / gap
                         var tappedWallSlot = false
-                        for (dwx in 0..7) {
-                            for (dwy in 0..7) {
+                        for (dwx in 0..maxWallCoord) {
+                            for (dwy in 0..maxWallCoord) {
                                 val pegCenterX = (dwx + 1) * step - (gap / 2f)
                                 val pegCenterY = (dwy + 1) * step - (gap / 2f)
                                 val distSq = (localX - pegCenterX) * (localX - pegCenterX) + (localY - pegCenterY) * (localY - pegCenterY)
                                 val hitRadius = step * 0.48f
                                 if (distSq <= hitRadius * hitRadius) {
-                                    val modelWx = if (isFlipped) 7 - dwx else dwx
-                                    val modelWy = if (isFlipped) 7 - dwy else dwy
+                                    val modelWx = if (isFlipped) maxWallCoord - dwx else dwx
+                                    val modelWy = if (isFlipped) maxWallCoord - dwy else dwy
                                     onWallSlotClicked(modelWx, modelWy)
                                     tappedWallSlot = true
                                     break
@@ -106,10 +112,10 @@ fun GameBoardCanvas(
 
                         if (!tappedWallSlot) {
                             // Tap was on a cell
-                            val dispCol = (localX / step).toInt().coerceIn(0, 8)
-                            val dispRow = (localY / step).toInt().coerceIn(0, 8)
-                            val modelCol = if (isFlipped) 8 - dispCol else dispCol
-                            val modelRow = if (isFlipped) 8 - dispRow else dispRow
+                            val dispCol = (localX / step).toInt().coerceIn(0, maxCoord)
+                            val dispRow = (localY / step).toInt().coerceIn(0, maxCoord)
+                            val modelCol = if (isFlipped) maxCoord - dispCol else dispCol
+                            val modelRow = if (isFlipped) maxCoord - dispRow else dispRow
                             val clickedPos = Position(modelCol, modelRow)
 
                             if (clickedPos == state.player1.position) {
@@ -127,11 +133,15 @@ fun GameBoardCanvas(
                     }
                 }
         ) {
+            val gridSize = state.rules.gridSize.coerceAtLeast(3)
+            val maxCoord = gridSize - 1
+            val maxWallCoord = gridSize - 2
+
             val w = kotlin.math.min(size.width, size.height)
             val padding = w * 0.032f
             val playableWidth = w - (padding * 2)
-            val gap = playableWidth * 0.028f
-            val cellSize = (playableWidth - (gap * 8)) / 9f
+            val gap = playableWidth * (0.25f / gridSize)
+            val cellSize = (playableWidth - (gap * maxCoord)) / gridSize.toFloat()
             val step = cellSize + gap
             val cellRadius = cellSize * 0.16f
             val boardRadius = w * 0.045f
@@ -161,7 +171,7 @@ fun GameBoardCanvas(
             val p1GoalColor = theme.p1Primary.copy(alpha = 0.22f)
             val p2GoalColor = theme.p2Primary.copy(alpha = 0.22f)
 
-            // Paint for coordinates (1..9, i..a)
+            // Paint for coordinates
             val textPaint = Paint().apply {
                 color = theme.cellBorderColor.copy(alpha = 0.55f).toArgb()
                 textSize = cellSize * 0.24f
@@ -170,31 +180,37 @@ fun GameBoardCanvas(
                 typeface = Typeface.DEFAULT_BOLD
             }
 
-            // 3. Draw 81 Cells
-            val rowLabels = if (isFlipped) listOf("1", "2", "3", "4", "5", "6", "7", "8", "9") else listOf("9", "8", "7", "6", "5", "4", "3", "2", "1")
-            val colLabels = if (isFlipped) listOf("a", "b", "c", "d", "e", "f", "g", "h", "i") else listOf("i", "h", "g", "f", "e", "d", "c", "b", "a")
+            // 3. Draw Grid Cells
+            val rowLabels = (1..gridSize).map { it.toString() }.let { if (isFlipped) it else it.reversed() }
+            val colLabels = (0 until gridSize).map { ('a' + it).toString() }.let { if (isFlipped) it else it.reversed() }
 
-            for (r in 0..8) {
-                for (c in 0..8) {
+            val p1GoalRow = RuleEngine.getPlayerGoalRow(state, PlayerId.PLAYER_1)
+            val p2GoalRow = RuleEngine.getPlayerGoalRow(state, PlayerId.PLAYER_2)
+
+            for (r in 0 until gridSize) {
+                for (c in 0 until gridSize) {
                     val cellLeft = padding + c * step
                     val cellTop = padding + r * step
 
-                    val isP1GoalRow = if (isFlipped) (r == 8) else (r == 0)
-                    val isP2GoalRow = if (isFlipped) (r == 0) else (r == 8)
-                    val isQuadCenterCell = isQuadMode && r == 4 && c == 4
-                    val isRaceFinishCell = isRaceMode && ((if (isFlipped) r == 8 else r == 0))
-                    val isRaceStartCell = isRaceMode && ((if (isFlipped) r == 0 else r == 8)) && (c == 3 || c == 5)
+                    val modelC = if (isFlipped) maxCoord - c else c
+                    val modelR = if (isFlipped) maxCoord - r else r
+
+                    val isP1GoalRow = !isQuadMode && !isRaceMode && (modelR == p1GoalRow)
+                    val isP2GoalRow = !isQuadMode && !isRaceMode && (modelR == p2GoalRow)
+                    val isQuadCenterCell = isQuadMode && modelR == gridSize / 2 && modelC == gridSize / 2
+                    val isRaceFinishCell = isRaceMode && (modelR == RuleEngine.RACE_GOAL_ROW)
+                    val isRaceStartCell = isRaceMode && (modelR == maxCoord) && (modelC == (gridSize / 2 - 1) || modelC == (gridSize / 2 + 1))
 
                     val bgCellColor = when {
                         isQuadCenterCell -> GoldRating.copy(alpha = 0.25f + (glowAlpha * 0.15f))
                         isRaceFinishCell -> if ((r + c) % 2 == 0) SuccessGreen.copy(alpha = 0.48f) else SuccessGreen.copy(alpha = 0.30f)
                         isRaceStartCell -> RaceStartGreen.copy(alpha = 0.22f)
-                        isQuadMode && r == 8 && c == 4 -> theme.p1Primary.copy(alpha = 0.18f) // P1 entry
-                        isQuadMode && r == 0 && c == 4 -> theme.p2Primary.copy(alpha = 0.18f) // P2 entry
-                        isQuadMode && r == 4 && c == 0 -> Player3Primary.copy(alpha = 0.18f)  // P3 entry
-                        isQuadMode && r == 4 && c == 8 -> Player4Primary.copy(alpha = 0.18f)  // P4 entry
-                        !isQuadMode && !isRaceMode && isP1GoalRow -> p1GoalColor
-                        !isQuadMode && !isRaceMode && isP2GoalRow -> p2GoalColor
+                        isQuadMode && modelR == maxCoord && modelC == gridSize / 2 -> theme.p1Primary.copy(alpha = 0.18f)
+                        isQuadMode && modelR == 0 && modelC == gridSize / 2 -> theme.p2Primary.copy(alpha = 0.18f)
+                        isQuadMode && modelR == gridSize / 2 && modelC == 0 -> Player3Primary.copy(alpha = 0.18f)
+                        isQuadMode && modelR == gridSize / 2 && modelC == maxCoord -> Player4Primary.copy(alpha = 0.18f)
+                        isP1GoalRow -> p1GoalColor
+                        isP2GoalRow -> p2GoalColor
                         (r + c) % 2 == 0 -> theme.cellColor
                         else -> theme.cellAltColor
                     }
@@ -211,8 +227,8 @@ fun GameBoardCanvas(
                         isQuadCenterCell -> GoldRating
                         isRaceFinishCell -> SuccessGreen
                         isRaceStartCell -> RaceStartGreen.copy(alpha = 0.6f)
-                        !isQuadMode && !isRaceMode && isP1GoalRow -> theme.p1Primary.copy(alpha = 0.45f)
-                        !isQuadMode && !isRaceMode && isP2GoalRow -> theme.p2Primary.copy(alpha = 0.45f)
+                        isP1GoalRow -> theme.p1Primary.copy(alpha = 0.45f)
+                        isP2GoalRow -> theme.p2Primary.copy(alpha = 0.45f)
                         else -> theme.cellBorderColor
                     }
 
@@ -224,7 +240,7 @@ fun GameBoardCanvas(
                         style = Stroke(width = if (isQuadCenterCell || isRaceFinishCell) 2.2f else 1.2f)
                     )
 
-                    // Special indicator inside Race Finish cells (checkered flag green dot)
+                    // Special indicator inside Race Finish cells
                     if (isRaceFinishCell) {
                         val centerCellX = cellLeft + (cellSize / 2f)
                         val centerCellY = cellTop + (cellSize / 2f)
@@ -241,22 +257,37 @@ fun GameBoardCanvas(
                         )
                     }
 
-                    // Special indicator inside Quad Center cell (4,4)
+                    // Special indicator inside Quad Center cell
                     if (isQuadCenterCell) {
                         val centerCellX = cellLeft + (cellSize / 2f)
                         val centerCellY = cellTop + (cellSize / 2f)
-                        // Glowing target ring
                         drawCircle(
                             color = GoldRating.copy(alpha = glowAlpha),
                             radius = (cellSize * 0.32f) * pulseScale,
                             center = Offset(centerCellX, centerCellY),
                             style = Stroke(width = 2f)
                         )
-                        // Inner star / gold dot
                         drawCircle(
                             color = GoldRating,
                             radius = cellSize * 0.15f,
                             center = Offset(centerCellX, centerCellY)
+                        )
+                    }
+
+                    // Draw Obstacle Pillar if present on this cell
+                    val hasObstacle = state.obstacles.any { it.x == modelC && it.y == modelR }
+                    if (hasObstacle) {
+                        drawRoundRect(
+                            color = Color(0xFF334155),
+                            topLeft = Offset(cellLeft + 4f, cellTop + 4f),
+                            size = Size(cellSize - 8f, cellSize - 8f),
+                            cornerRadius = CornerRadius(6f, 6f)
+                        )
+                        drawRoundRect(
+                            color = Color(0xFF64748B),
+                            topLeft = Offset(cellLeft + 8f, cellTop + 8f),
+                            size = Size(cellSize - 16f, cellSize - 16f),
+                            cornerRadius = CornerRadius(4f, 4f)
                         )
                     }
 
@@ -270,7 +301,7 @@ fun GameBoardCanvas(
                                 textPaint
                             )
                         }
-                        if (r == 8) {
+                        if (r == maxCoord) {
                             drawContext.canvas.nativeCanvas.drawText(
                                 colLabels[c],
                                 cellLeft + (cellSize * 0.08f),
@@ -285,8 +316,8 @@ fun GameBoardCanvas(
             // 4. Draw Legal Move Dots
             if (isLocalTurn) {
                 for (move in legalMoves) {
-                    val dispX = if (isFlipped) 8 - move.x else move.x
-                    val dispY = if (isFlipped) 8 - move.y else move.y
+                    val dispX = if (isFlipped) maxCoord - move.x else move.x
+                    val dispY = if (isFlipped) maxCoord - move.y else move.y
                     val moveLeft = padding + dispX * step
                     val moveTop = padding + dispY * step
                     val centerX = moveLeft + (cellSize / 2f)
@@ -308,6 +339,26 @@ fun GameBoardCanvas(
                 }
             }
 
+            // Ghost Path Trajectory (Personal Best Run)
+            if (isGhostEnabled && ghostTrajectory.isNotEmpty()) {
+                for (ghostPos in ghostTrajectory) {
+                    val dispX = if (isFlipped) maxCoord - ghostPos.x else ghostPos.x
+                    val dispY = if (isFlipped) maxCoord - ghostPos.y else ghostPos.y
+                    val centerX = padding + dispX * step + (cellSize / 2f)
+                    val centerY = padding + dispY * step + (cellSize / 2f)
+                    drawCircle(
+                        color = NeonCyan.copy(alpha = 0.25f),
+                        radius = cellSize * 0.16f,
+                        center = Offset(centerX, centerY)
+                    )
+                    drawCircle(
+                        color = NeonCyan.copy(alpha = 0.6f),
+                        radius = cellSize * 0.06f,
+                        center = Offset(centerX, centerY)
+                    )
+                }
+            }
+
             // 5. Draw Placed Walls
             for (wall in state.walls) {
                 val (wColor, wBorder) = when (wall.placedBy) {
@@ -317,7 +368,7 @@ fun GameBoardCanvas(
                     PlayerId.PLAYER_4 -> Pair(Player4Primary, Player4Dark)
                 }
 
-                val dispWall = if (isFlipped) wall.copy(x = 7 - wall.x, y = 7 - wall.y) else wall
+                val dispWall = if (isFlipped) wall.copy(x = maxWallCoord - wall.x, y = maxWallCoord - wall.y) else wall
 
                 drawWall(
                     wall = dispWall,
@@ -337,7 +388,7 @@ fun GameBoardCanvas(
                 val previewColor = if (isWallValid) WallPreviewLegal else WallPreviewIllegal
                 val previewBorder = if (isWallValid) Color(0xFF059669) else DangerRed
 
-                val dispPreview = if (isFlipped) previewWall.copy(x = 7 - previewWall.x, y = 7 - previewWall.y) else previewWall
+                val dispPreview = if (isFlipped) previewWall.copy(x = maxWallCoord - previewWall.x, y = maxWallCoord - previewWall.y) else previewWall
 
                 drawWall(
                     wall = dispPreview,
@@ -353,8 +404,8 @@ fun GameBoardCanvas(
             }
 
             // 7. Draw Player Pawns
-            // Player 1 (P1) - Blue
-            val p1DispPos = if (isFlipped) Position(8 - state.player1.position.x, 8 - state.player1.position.y) else state.player1.position
+            // Player 1 (P1)
+            val p1DispPos = if (isFlipped) Position(maxCoord - state.player1.position.x, maxCoord - state.player1.position.y) else state.player1.position
             drawPawn(
                 pos = p1DispPos,
                 padding = padding,
@@ -365,11 +416,13 @@ fun GameBoardCanvas(
                 glowColor = theme.p1Glow,
                 isSelected = (selectedPawn == PlayerId.PLAYER_1 || (state.currentTurn == PlayerId.PLAYER_1 && isLocalTurn)),
                 pulseScale = if (state.currentTurn == PlayerId.PLAYER_1) pulseScale else 1f,
-                glowAlpha = glowAlpha
+                glowAlpha = glowAlpha,
+                shieldActive = state.player1.shieldTurns > 0,
+                phaseActive = state.player1.phasePassCharges > 0
             )
 
-            // Player 2 (P2) - Red
-            val p2DispPos = if (isFlipped) Position(8 - state.player2.position.x, 8 - state.player2.position.y) else state.player2.position
+            // Player 2 (P2)
+            val p2DispPos = if (isFlipped) Position(maxCoord - state.player2.position.x, maxCoord - state.player2.position.y) else state.player2.position
             drawPawn(
                 pos = p2DispPos,
                 padding = padding,
@@ -380,12 +433,14 @@ fun GameBoardCanvas(
                 glowColor = theme.p2Glow,
                 isSelected = (selectedPawn == PlayerId.PLAYER_2 || (state.currentTurn == PlayerId.PLAYER_2 && isLocalTurn)),
                 pulseScale = if (state.currentTurn == PlayerId.PLAYER_2) pulseScale else 1f,
-                glowAlpha = glowAlpha
+                glowAlpha = glowAlpha,
+                shieldActive = state.player2.shieldTurns > 0,
+                phaseActive = state.player2.phasePassCharges > 0
             )
 
-            // Player 3 (P3) - Emerald Green (in Quad Mode)
+            // Player 3 (P3)
             state.player3?.let { p3 ->
-                val p3DispPos = if (isFlipped) Position(8 - p3.position.x, 8 - p3.position.y) else p3.position
+                val p3DispPos = if (isFlipped) Position(maxCoord - p3.position.x, maxCoord - p3.position.y) else p3.position
                 drawPawn(
                     pos = p3DispPos,
                     padding = padding,
@@ -400,9 +455,9 @@ fun GameBoardCanvas(
                 )
             }
 
-            // Player 4 (P4) - Amber Gold (in Quad Mode)
+            // Player 4 (P4)
             state.player4?.let { p4 ->
-                val p4DispPos = if (isFlipped) Position(8 - p4.position.x, 8 - p4.position.y) else p4.position
+                val p4DispPos = if (isFlipped) Position(maxCoord - p4.position.x, maxCoord - p4.position.y) else p4.position
                 drawPawn(
                     pos = p4DispPos,
                     padding = padding,
@@ -430,7 +485,9 @@ private fun DrawScope.drawPawn(
     glowColor: Color,
     isSelected: Boolean,
     pulseScale: Float,
-    glowAlpha: Float
+    glowAlpha: Float,
+    shieldActive: Boolean = false,
+    phaseActive: Boolean = false
 ) {
     val centerX = padding + pos.x * step + (cellSize / 2f)
     val centerY = padding + pos.y * step + (cellSize / 2f)
@@ -442,6 +499,26 @@ private fun DrawScope.drawPawn(
         radius = pawnRadius * 1.05f,
         center = Offset(centerX + 3f, centerY + 5f)
     )
+
+    // Shield Aura if active
+    if (shieldActive) {
+        drawCircle(
+            color = NeonCyan.copy(alpha = glowAlpha),
+            radius = pawnRadius * 1.55f * pulseScale,
+            center = Offset(centerX, centerY),
+            style = Stroke(width = 4f)
+        )
+    }
+
+    // Phase Aura if active
+    if (phaseActive) {
+        drawCircle(
+            color = Color(0xFFD946EF).copy(alpha = 0.5f),
+            radius = pawnRadius * 1.4f,
+            center = Offset(centerX, centerY),
+            style = Stroke(width = 3f)
+        )
+    }
 
     // Active glow if current turn
     if (isSelected) {

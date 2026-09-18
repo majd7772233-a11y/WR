@@ -36,6 +36,12 @@ class ReplayEngine(
                 is GameEvent.EmoteSent -> {
                     GameEngine.addEmote(current, event.player, event.emoji)
                 }
+                is GameEvent.WallDestroyed -> {
+                    current.copy(walls = current.walls.filterNot { it.x == event.wall.x && it.y == event.wall.y && it.orientation == event.wall.orientation })
+                }
+                is GameEvent.PowerUpUsed -> {
+                    current
+                }
             }
             list.add(current)
         }

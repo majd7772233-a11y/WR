@@ -76,12 +76,18 @@ object DailyChallengeManager {
             AIDifficulty.EASY -> listOf("🤖 Rookie Bot", "🌱 Cadet AI", "🟢 Sparky AI").random()
             AIDifficulty.MEDIUM -> listOf("⚔️ Victor Bot", "🛡️ Titan Guard", "🟡 Sentinel AI").random()
             AIDifficulty.HARD -> listOf("🧠 Grandmaster AI", "⚡ Apex Mind", "🔴 Cyber Warlord").random()
+            AIDifficulty.EXPERT -> listOf("🟣 Grand Oracle", "🔮 Cyber Nexus").random()
+            AIDifficulty.NIGHTMARE -> listOf("💀 Nightmare Entity", "👁️ Omniscient Core").random()
+            AIDifficulty.INSANE -> listOf("⚡ Quantum God AI", "🌌 Infinity Alpha").random()
         }
 
         val reward = when (difficulty) {
             AIDifficulty.EASY -> 120
             AIDifficulty.MEDIUM -> 180
             AIDifficulty.HARD -> 250
+            AIDifficulty.EXPERT -> 320
+            AIDifficulty.NIGHTMARE -> 400
+            AIDifficulty.INSANE -> 500
         }
 
         return DailyChallenge(

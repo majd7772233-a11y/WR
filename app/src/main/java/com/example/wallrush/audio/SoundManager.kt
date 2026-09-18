@@ -164,4 +164,36 @@ class SoundManager(private val context: Context) {
     fun playButton() {
         playTone(listOf(600.0), 40, envelopeType = "quick_decay")
     }
+
+    fun playNearMiss() {
+        scope.launch {
+            playTone(listOf(784.0, 1046.5), 160, envelopeType = "bell")
+            vibrate(45, 180)
+        }
+    }
+
+    fun playLevelUp() {
+        scope.launch {
+            val chord = listOf(523.25, 659.25, 783.99, 1046.50, 1318.51)
+            for (c in chord) {
+                playTone(listOf(c), 120, envelopeType = "bell")
+                vibrate(25, 100)
+                kotlinx.coroutines.delay(80)
+            }
+        }
+    }
+
+    fun playPowerUp() {
+        scope.launch {
+            playTone(listOf(440.0, 660.0, 880.0), 180, envelopeType = "bell")
+            vibrate(50, 120)
+        }
+    }
+
+    fun playGlitchRewind() {
+        scope.launch {
+            playTone(listOf(900.0, 450.0, 300.0), 220, envelopeType = "quick_decay")
+            vibrate(80, 220)
+        }
+    }
 }

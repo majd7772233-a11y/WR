@@ -24,6 +24,7 @@ data class Position(
     val x: Int,
     val y: Int
 ) {
+    fun isWithinBounds(gridSize: Int = 9): Boolean = x in 0 until gridSize && y in 0 until gridSize
     fun isWithinBounds(): Boolean = x in 0..8 && y in 0..8
 }
 
@@ -31,11 +32,12 @@ data class Position(
 @JsonClass(generateAdapter = true)
 data class Wall(
     val id: String = UUID.randomUUID().toString(),
-    val x: Int, // 0..7
-    val y: Int, // 0..7
+    val x: Int,
+    val y: Int,
     val orientation: WallOrientation,
     val placedBy: PlayerId
 ) {
+    fun isWithinBounds(gridSize: Int = 9): Boolean = x in 0 until (gridSize - 1) && y in 0 until (gridSize - 1)
     fun isWithinBounds(): Boolean = x in 0..7 && y in 0..7
 }
 
@@ -54,7 +56,46 @@ enum class GameMode {
 enum class AIDifficulty {
     EASY,
     MEDIUM,
-    HARD
+    HARD,
+    EXPERT,
+    NIGHTMARE,
+    INSANE;
+
+    companion object {
+        val NORMAL = MEDIUM
+    }
+}
+
+@Keep
+@JsonClass(generateAdapter = true)
+data class Obstacle(
+    val x: Int,
+    val y: Int
+) {
+    fun isWithinBounds(gridSize: Int = 9): Boolean = x in 0 until gridSize && y in 0 until gridSize
+}
+
+@Keep
+enum class PowerUpType {
+    // Defensive
+    SHIELD,
+    DOUBLE_SHIELD,
+    PHASE,
+    INVINCIBLE,
+    // Offensive
+    WALL_BREAK,
+    SHOCKWAVE,
+    LASER,
+    // Movement
+    DASH,
+    TELEPORT,
+    BLINK,
+    // Time
+    TIME_FREEZE,
+    TIME_REWIND,
+    // Risky
+    BERSERK,
+    CHAOS
 }
 
 @Keep
@@ -81,7 +122,8 @@ data class GameRules(
     val timeLimitSeconds: Int = 300, // 5 min (0 = Infinite)
     val allowUndo: Boolean = false,
     val aiDifficulty: AIDifficulty = AIDifficulty.MEDIUM,
-    val mode: GameMode = GameMode.VS_AI
+    val mode: GameMode = GameMode.VS_AI,
+    val gridSize: Int = 9
 )
 
 @Keep
@@ -95,7 +137,12 @@ data class PlayerState(
     val timeRemainingMillis: Long = 300_000L,
     val isAI: Boolean = false,
     val isHost: Boolean = true,
-    val isConnected: Boolean = true
+    val isConnected: Boolean = true,
+    val energy: Int = 60, // 0..100
+    val shieldTurns: Int = 0,
+    val phasePassCharges: Int = 0,
+    val rewindCharges: Int = 2,
+    val targetGoalRow: Int? = null
 )
 
 @Keep
@@ -113,6 +160,21 @@ sealed class GameEvent {
     data class WallPlaced(
         val player: PlayerId,
         val wall: Wall,
+        val moveNumber: Int,
+        val timestamp: Long = System.currentTimeMillis()
+    ) : GameEvent()
+
+    @JsonClass(generateAdapter = true)
+    data class WallDestroyed(
+        val player: PlayerId,
+        val wall: Wall,
+        val timestamp: Long = System.currentTimeMillis()
+    ) : GameEvent()
+
+    @JsonClass(generateAdapter = true)
+    data class PowerUpUsed(
+        val player: PlayerId,
+        val powerUp: PowerUpType,
         val moveNumber: Int,
         val timestamp: Long = System.currentTimeMillis()
     ) : GameEvent()
@@ -136,6 +198,7 @@ data class GameState(
     val player3: PlayerState? = null,
     val player4: PlayerState? = null,
     val walls: List<Wall> = emptyList(),
+    val obstacles: List<Obstacle> = emptyList(),
     val currentTurn: PlayerId = PlayerId.PLAYER_1,
     val status: GameStatus = GameStatus.IN_PROGRESS,
     val winner: PlayerId? = null,
@@ -143,6 +206,9 @@ data class GameState(
     val moveCount: Int = 0,
     val eventHistory: List<GameEvent> = emptyList(),
     val countdownSeconds: Int = 0,
+    val comboCount: Int = 0,
+    val maxCombo: Int = 0,
+    val nearMissCount: Int = 0,
     val lastActionTimestamp: Long = System.currentTimeMillis()
 ) {
     fun isQuadMode(): Boolean = rules.mode == GameMode.QUAD_MODE

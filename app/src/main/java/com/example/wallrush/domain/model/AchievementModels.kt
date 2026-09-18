@@ -58,7 +58,6 @@ data class InAppNotification(
 enum class NotificationType {
     ACHIEVEMENT,
     DAILY_CHALLENGE,
-    SECRET_GLITCH,
     SYSTEM
 }
 

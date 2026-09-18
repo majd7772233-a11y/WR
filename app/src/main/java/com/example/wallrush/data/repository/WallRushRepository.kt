@@ -184,8 +184,25 @@ class WallRushRepository(private val database: AppDatabase) {
                 is GameEvent.EmoteSent -> {
                     sb.append("EMOTE|${event.player}|${event.emoji}\n")
                 }
+                is GameEvent.PowerUpUsed -> {
+                    sb.append("POWERUP|${event.player}|${event.powerUp.name}|${event.moveNumber}\n")
+                }
+                is GameEvent.WallDestroyed -> {
+                    sb.append("DESTROY|${event.player}|${event.wall.x}|${event.wall.y}|${event.wall.orientation}\n")
+                }
             }
         }
         return sb.toString()
+    }
+
+    val allCustomLevels: Flow<List<com.example.wallrush.data.local.CustomLevelEntity>> =
+        database.customLevelDao().getAllLevelsFlow()
+
+    suspend fun saveCustomLevel(level: com.example.wallrush.data.local.CustomLevelEntity) {
+        database.customLevelDao().saveLevel(level)
+    }
+
+    suspend fun deleteCustomLevel(id: String) {
+        database.customLevelDao().deleteLevel(id)
     }
 }

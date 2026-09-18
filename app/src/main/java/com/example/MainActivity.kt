@@ -32,6 +32,8 @@ import com.example.wallrush.ui.localization.AppLanguage
 import com.example.wallrush.ui.screens.*
 import com.example.wallrush.ui.viewmodel.ScreenState
 import com.example.wallrush.ui.viewmodel.WallRushViewModel
+import com.example.wallrush.ui.components.NeonBottomNavigationBar
+import androidx.compose.material3.Scaffold
 
 class MainActivity : ComponentActivity() {
 
@@ -60,84 +62,104 @@ fun WallRushApp(viewModel: WallRushViewModel) {
 
     CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
         WallRushTheme {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(DeepSlateBackground)
-            ) {
-                AnimatedContent(
-                    targetState = currentScreen,
-                    transitionSpec = {
-                        fadeIn() togetherWith fadeOut()
-                    },
-                    label = "ScreenTransition"
-                ) { screen ->
-                    when (screen) {
-                        ScreenState.HOME -> HomeScreen(viewModel = viewModel)
-                        ScreenState.MATCH -> MatchScreen(viewModel = viewModel)
-                        ScreenState.PUBLIC_ROOMS -> PublicRoomsScreen(viewModel = viewModel)
-                        ScreenState.PLAY_FRIEND -> PlayFriendScreen(viewModel = viewModel)
-                        ScreenState.TUTORIAL -> TutorialScreen(viewModel = viewModel)
-                        ScreenState.REPLAY -> ReplayScreen(viewModel = viewModel)
-                        ScreenState.LEADERBOARD -> LeaderboardScreen(viewModel = viewModel)
-                        ScreenState.PROFILE -> ProfileScreen(viewModel = viewModel)
-                        ScreenState.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                        ScreenState.ABOUT -> AboutScreen(viewModel = viewModel)
-                        ScreenState.ACHIEVEMENTS -> AchievementsScreen(viewModel = viewModel)
+            val showBottomNav = currentScreen != ScreenState.LEVEL_EDITOR && currentScreen != ScreenState.MATCH
+
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = DeepSlateBackground,
+                bottomBar = {
+                    if (showBottomNav) {
+                        NeonBottomNavigationBar(
+                            currentScreen = currentScreen,
+                            language = settings.language,
+                            onNavigate = { screen -> viewModel.navigateTo(screen) }
+                        )
                     }
                 }
-
-                val inAppNotification by viewModel.inAppNotification.collectAsState()
-
-                AnimatedVisibility(
-                    visible = inAppNotification != null,
-                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            ) { innerPadding ->
+                Box(
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .padding(top = 10.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxSize()
+                        .background(DeepSlateBackground)
+                        .padding(if (showBottomNav) innerPadding else PaddingValues(0.dp))
                 ) {
-                    inAppNotification?.let { notif ->
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFF0F172A),
-                            border = BorderStroke(1.5.dp, Player1Primary),
-                            shadowElevation = 14.dp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .widthIn(max = 500.dp)
-                                .clickable { viewModel.dismissInAppNotification() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    AnimatedContent(
+                        targetState = currentScreen,
+                        transitionSpec = {
+                            fadeIn() togetherWith fadeOut()
+                        },
+                        label = "ScreenTransition"
+                    ) { screen ->
+                        when (screen) {
+                            ScreenState.HOME -> HomeScreen(viewModel = viewModel)
+                            ScreenState.MATCH -> MatchScreen(viewModel = viewModel)
+                            ScreenState.PUBLIC_ROOMS -> PublicRoomsScreen(viewModel = viewModel)
+                            ScreenState.PLAY_FRIEND -> PlayFriendScreen(viewModel = viewModel)
+                            ScreenState.TUTORIAL -> TutorialScreen(viewModel = viewModel)
+                            ScreenState.REPLAY -> ReplayScreen(viewModel = viewModel)
+                            ScreenState.LEADERBOARD -> LeaderboardScreen(viewModel = viewModel)
+                            ScreenState.PROFILE -> ProfileScreen(viewModel = viewModel)
+                            ScreenState.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                            ScreenState.ABOUT -> AboutScreen(viewModel = viewModel)
+                            ScreenState.ACHIEVEMENTS -> AchievementsScreen(viewModel = viewModel)
+                            ScreenState.LEVEL_EDITOR -> LevelEditorScreen(viewModel = viewModel)
+                            ScreenState.CUSTOM_MAPS -> CustomMapsScreen(viewModel = viewModel)
+                            ScreenState.TITLES -> TitlesScreen(viewModel = viewModel)
+                        }
+                    }
+
+                    val inAppNotification by viewModel.inAppNotification.collectAsState()
+
+                    AnimatedVisibility(
+                        visible = inAppNotification != null,
+                        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = 10.dp, start = 16.dp, end = 16.dp)
+                    ) {
+                        inAppNotification?.let { notif ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF0F172A),
+                                border = BorderStroke(1.5.dp, Player1Primary),
+                                shadowElevation = 14.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .widthIn(max = 500.dp)
+                                    .clickable { viewModel.dismissInAppNotification() }
                             ) {
-                                Text(text = notif.icon, fontSize = 24.sp)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = notif.title,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = notif.message,
-                                        color = TextSecondary,
-                                        fontSize = 12.sp
-                                    )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(text = notif.icon, fontSize = 24.sp)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = notif.title,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = notif.message,
+                                            color = TextSecondary,
+                                            fontSize = 12.sp
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                if (showSettingsDialog) {
-                    SettingsDialog(
-                        viewModel = viewModel,
-                        onDismiss = { viewModel.setShowSettingsDialog(false) }
-                    )
+                    if (showSettingsDialog) {
+                        SettingsDialog(
+                            viewModel = viewModel,
+                            onDismiss = { viewModel.setShowSettingsDialog(false) }
+                        )
+                    }
                 }
             }
         }

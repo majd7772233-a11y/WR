@@ -50,6 +50,11 @@ fun MatchControls(
     onCancelWall: () -> Unit,
     onResignClicked: () -> Unit,
     onSendEmote: (String) -> Unit,
+    onUsePowerUp: ((com.example.wallrush.domain.model.PowerUpType) -> Unit)? = null,
+    onRewind: (() -> Unit)? = null,
+    isRewindAllowed: Boolean = false,
+    rewindCharges: Int = 0,
+    currentEnergy: Int = 100,
     modifier: Modifier = Modifier
 ) {
     var showChatPanel by remember { mutableStateOf(false) }
