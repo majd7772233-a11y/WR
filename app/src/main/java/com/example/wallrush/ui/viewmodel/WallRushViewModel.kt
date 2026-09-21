@@ -1398,10 +1398,17 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                         _gameState.value = updated
                         soundManager.playMove()
 
-                        // Occasional natural human emote
-                        if (Random.nextFloat() < 0.08f) {
-                            val emote = if (npc?.personality == NPCPersonality.THE_RUSHER) "⚡" else "😎"
-                            showOpponentEmote(emote)
+                        // Occasional natural human emote & authentic personality reaction
+                        if (Random.nextFloat() < 0.18f && npc != null) {
+                            val isArabic = _settings.value.language == com.example.wallrush.ui.localization.AppLanguage.ARABIC
+                            val reaction = if (Random.nextBoolean()) {
+                                npc.personality.emoji
+                            } else {
+                                npc.personality.getPersonalityReaction(isWallPlaced = false, isWinning = false, isArabic = isArabic)
+                            }
+                            showOpponentEmote(reaction)
+                        } else if (Random.nextFloat() < 0.08f) {
+                            showOpponentEmote("😎")
                         }
 
                         if (updated.status == GameStatus.FINISHED) {
@@ -1416,9 +1423,16 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
                         soundManager.playWallPlace()
 
                         // Occasional natural reaction emote when placing a barrier
-                        if (Random.nextFloat() < 0.12f) {
-                            val emote = if (npc?.personality == NPCPersonality.THE_ARCHITECT) "🧱" else "😈"
-                            showOpponentEmote(emote)
+                        if (Random.nextFloat() < 0.25f && npc != null) {
+                            val isArabic = _settings.value.language == com.example.wallrush.ui.localization.AppLanguage.ARABIC
+                            val reaction = if (Random.nextBoolean()) {
+                                npc.personality.emoji
+                            } else {
+                                npc.personality.getPersonalityReaction(isWallPlaced = true, isWinning = false, isArabic = isArabic)
+                            }
+                            showOpponentEmote(reaction)
+                        } else if (Random.nextFloat() < 0.12f) {
+                            showOpponentEmote("🧱")
                         }
 
                         if (updated.status == GameStatus.FINISHED) {
@@ -1452,7 +1466,8 @@ class WallRushViewModel(application: Application) : AndroidViewModel(application
             finalState = finalState,
             localPlayerId = localPlayerId,
             profile = _userProfile.value,
-            isP2PMatch = isP2PActiveMatch
+            isP2PMatch = isP2PActiveMatch,
+            aiPersonality = _activeNPC.value?.personality
         ) { ach ->
             SmartNotificationHelper.showAchievementUnlockedNotification(
                 getApplication(),

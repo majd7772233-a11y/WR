@@ -42,9 +42,24 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        hideSystemBars()
         setContent {
             WallRushApp(viewModel = viewModel)
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemBars()
+        }
+    }
+
+    private fun hideSystemBars() {
+        val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
     }
 }
 
@@ -97,7 +112,7 @@ fun WallRushApp(viewModel: WallRushViewModel) {
                             ScreenState.PLAY_FRIEND -> PlayFriendScreen(viewModel = viewModel)
                             ScreenState.TUTORIAL -> TutorialScreen(viewModel = viewModel)
                             ScreenState.REPLAY -> ReplayScreen(viewModel = viewModel)
-                            ScreenState.LEADERBOARD -> LeaderboardScreen(viewModel = viewModel)
+                            ScreenState.LEADERBOARD -> ProfileScreen(viewModel = viewModel)
                             ScreenState.PROFILE -> ProfileScreen(viewModel = viewModel)
                             ScreenState.SETTINGS -> SettingsScreen(viewModel = viewModel)
                             ScreenState.ABOUT -> AboutScreen(viewModel = viewModel)

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.*
 import com.example.wallrush.data.local.MatchRecord
+import com.example.wallrush.ui.localization.AppLanguage
 import com.example.wallrush.ui.localization.Strings
 import com.example.wallrush.ui.viewmodel.ScreenState
 import com.example.wallrush.ui.viewmodel.WallRushViewModel
@@ -142,24 +143,99 @@ fun ProfileScreen(
                             }
                         }
 
-                        // Rating badge
+                        // Comprehensive Rank / Tier Badge Card
+                        val isArabic = language == AppLanguage.ARABIC
+                        val rankInfo = com.example.wallrush.domain.rank.RankManager.getPlayerRankInfo(profile, isArabic)
+
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = GoldRating.copy(alpha = 0.15f),
-                            modifier = Modifier.border(1.dp, GoldRating.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            shape = RoundedCornerShape(14.dp),
+                            color = rankInfo.tier.primaryColor.copy(alpha = 0.12f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.5.dp, rankInfo.tier.primaryColor.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(text = "⭐", fontSize = 14.sp)
-                                Text(
-                                    text = "${Strings.get("rating", language)}: ${profile.ratingScore}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = GoldRating
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(text = rankInfo.tier.iconEmoji, fontSize = 24.sp)
+                                        Column {
+                                            Text(
+                                                text = if (isArabic) rankInfo.tier.nameAr else rankInfo.tier.nameEn,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Black,
+                                                color = rankInfo.tier.primaryColor
+                                            )
+                                            Text(
+                                                text = if (isArabic) rankInfo.tier.perkTitleAr else rankInfo.tier.perkTitleEn,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        color = rankInfo.tier.primaryColor.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, rankInfo.tier.primaryColor.copy(alpha = 0.5f))
+                                    ) {
+                                        Text(
+                                            text = "${profile.ratingScore} RP",
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 13.sp,
+                                            color = rankInfo.tier.primaryColor
+                                        )
+                                    }
+                                }
+
+                                // Progress Bar to Next Rank Tier
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    LinearProgressIndicator(
+                                        progress = { rankInfo.progressInTier },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(8.dp)
+                                            .clip(RoundedCornerShape(4.dp)),
+                                        color = rankInfo.tier.primaryColor,
+                                        trackColor = SurfaceCardLight
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "+${rankInfo.tier.xpBonusPercent}% XP Bonus",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = GoldRating
+                                        )
+                                        if (rankInfo.nextTier != null) {
+                                            Text(
+                                                text = if (isArabic)
+                                                    "${rankInfo.pointsToNextTier} نقطة إلى ${rankInfo.nextTier.nameAr}"
+                                                else
+                                                    "${rankInfo.pointsToNextTier} RP to ${rankInfo.nextTier.nameEn}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextSecondary
+                                            )
+                                        } else {
+                                            Text(
+                                                text = if (isArabic) "الرتبة القصوى الأسطورية 👑" else "Max Rank Achieved 👑",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = rankInfo.tier.primaryColor,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

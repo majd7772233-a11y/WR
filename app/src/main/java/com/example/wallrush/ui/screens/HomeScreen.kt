@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -502,14 +503,13 @@ fun HomeScreen(
                         }
                     } else {
                         // AI Personalities Selection
-                        val personalities = listOf(
-                            Triple(NPCPersonality.THE_RUSHER, Strings.get("persona_rusher_title", language), Strings.get("persona_rusher_desc", language)),
-                            Triple(NPCPersonality.THE_DEFENDER, Strings.get("persona_defender_title", language), Strings.get("persona_defender_desc", language)),
-                            Triple(NPCPersonality.THE_CHAOTIC, Strings.get("persona_chaotic_title", language), Strings.get("persona_chaotic_desc", language)),
-                            Triple(NPCPersonality.THE_PREDICTOR, Strings.get("persona_predictor_title", language), Strings.get("persona_predictor_desc", language)),
-                            Triple(NPCPersonality.THE_TRICKSTER, Strings.get("persona_trickster_title", language), Strings.get("persona_trickster_desc", language)),
-                            Triple(NPCPersonality.THE_TACTICIAN, Strings.get("persona_tactician_title", language), Strings.get("persona_tactician_desc", language))
-                        )
+                        val personalities = NPCPersonality.values().map { persona ->
+                            Triple(
+                                persona,
+                                "${persona.emoji} " + if (language == AppLanguage.ARABIC) persona.titleAr else persona.titleEn,
+                                if (language == AppLanguage.ARABIC) persona.playStyleAr else persona.playStyleEn
+                            )
+                        }
 
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             personalities.forEach { (persona, title, desc) ->
@@ -862,6 +862,26 @@ fun HomeScreen(
                             color = TextSecondary
                         )
                     }
+
+                    // About App Button (Restored to top bar)
+                    Surface(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .clickable { viewModel.navigateTo(ScreenState.ABOUT) }
+                            .border(1.dp, CellBorder, CircleShape),
+                        shape = CircleShape,
+                        color = SurfaceCard
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = Strings.get("about", language),
+                                tint = Player1Primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -916,23 +936,25 @@ fun HomeScreen(
                             }
                         }
 
-                        // Rating badge
+                        // Rank & Rating badge
+                        val isArabic = language == AppLanguage.ARABIC
+                        val rankInfo = com.example.wallrush.domain.rank.RankManager.getPlayerRankInfo(profile, isArabic)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = GoldRating.copy(alpha = 0.15f),
-                            modifier = Modifier.border(1.dp, GoldRating.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            color = rankInfo.tier.primaryColor.copy(alpha = 0.15f),
+                            modifier = Modifier.border(1.dp, rankInfo.tier.primaryColor.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text(text = "⭐", fontSize = 12.sp)
+                                Text(text = rankInfo.tier.iconEmoji, fontSize = 13.sp)
                                 Text(
-                                    text = "${profile.ratingScore}",
+                                    text = "${profile.ratingScore} RP",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Black,
-                                    color = GoldRating
+                                    color = rankInfo.tier.primaryColor
                                 )
                             }
                         }
@@ -950,7 +972,11 @@ fun HomeScreen(
                     badgeColor = Player1Primary,
                     icon = Icons.Default.Bolt,
                     gradientColors = listOf(Color(0xFF0C4A6E), SurfaceCard),
-                    onClick = { showQuickMatchDialog = true }
+                    onClick = { showQuickMatchDialog = true },
+                    onLongClick = {
+                        viewModel.activateOfflineBypassGlitch()
+                        showQuickMatchDialog = true
+                    }
                 )
             }
 
@@ -963,7 +989,11 @@ fun HomeScreen(
                     badgeColor = Color(0xFF10B981),
                     icon = Icons.Default.Public,
                     gradientColors = listOf(Color(0xFF064E3B), SurfaceCard),
-                    onClick = { viewModel.onPlayOnlineClicked() }
+                    onClick = { viewModel.onPlayOnlineClicked() },
+                    onLongClick = {
+                        viewModel.activateOfflineBypassGlitch()
+                        viewModel.onPlayOnlineClicked()
+                    }
                 )
             }
 
@@ -1019,22 +1049,12 @@ fun HomeScreen(
                 )
             }
 
-            // 7. Custom Maps & Level Editor
-            item {
-                MenuGameCard(
-                    title = if (language == AppLanguage.ARABIC) "المصمم والخرائط المخصصة" else "Custom Maps & Level Editor",
-                    subtitle = if (language == AppLanguage.ARABIC) "صمم خرائط بأعمدة وجدران، شاركها، والعب مستويات فريدة" else "Create obstacle maps, edit levels & play custom arenas",
-                    badge = "EDITOR",
-                    badgeColor = Color(0xFF06B6D4),
-                    icon = Icons.Default.Edit,
-                    gradientColors = listOf(Color(0xFF0E7490), SurfaceCard),
-                    onClick = { viewModel.navigateTo(ScreenState.CUSTOM_MAPS) }
-                )
-            }
+            // Note: 7. Custom Maps & Level Editor is temporarily hidden per user preference without deleting underlying code.
         }
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun MenuGameCard(
     title: String,
@@ -1043,13 +1063,17 @@ private fun MenuGameCard(
     badgeColor: Color,
     icon: ImageVector,
     gradientColors: List<Color>,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .border(1.dp, CellBorder, RoundedCornerShape(18.dp)),
         shape = RoundedCornerShape(18.dp),
         color = SurfaceCard

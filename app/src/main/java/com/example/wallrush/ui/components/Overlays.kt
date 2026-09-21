@@ -216,7 +216,7 @@ fun VictoryDialog(
                             colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black)
                         ) {
                             Text(
-                                text = if (language == AppLanguage.ARABIC) "التالي (التقييم والترقية) ➔" else "Next (Rating & Rewards) ➔",
+                                text = if (language == AppLanguage.ARABIC) "موافق" else "OK",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )

@@ -426,7 +426,23 @@ object Strings {
         "ghost_enabled" to "Show Best Run Ghost",
         "level_up" to "LEVEL UP!",
         "new_level" to "Level",
-        "total_xp" to "Total XP"
+        "total_xp" to "Total XP",
+        "unlocked_label" to "Unlocked",
+        "challenge_reset_timer" to "Resets In",
+        "filter_all" to "All",
+        "filter_combat" to "Combat & Wins",
+        "filter_tactics" to "Tactics & Walls",
+        "filter_secret" to "Mastery & Special",
+        "smart_notifications_title" to "Smart Daily Notifications",
+        "smart_notifications_desc" to "Receive daily alerts for new challenges & milestones",
+        "classic_mode" to "Classic Mode ♟️",
+        "classic_mode_short" to "Classic ♟️",
+        "race_mode_title" to "Race Mode 🏁",
+        "quad_mode_title" to "4-Player Quad 🎯",
+        "notif_daily_reminder_title" to "New Daily Challenge Ready!",
+        "diff_easy" to "Easy",
+        "diff_medium" to "Medium",
+        "diff_hard" to "Hard"
     )
 
     private val ARABIC_MAP = mapOf(
@@ -832,6 +848,22 @@ object Strings {
         "ghost_enabled" to "إظهار شبح أفضل جولة لك",
         "level_up" to "ارتقاء في المستوى!",
         "new_level" to "المستوى",
-        "total_xp" to "إجمالي نقاط الخبرة"
+        "total_xp" to "إجمالي نقاط الخبرة",
+        "unlocked_label" to "مكتمل",
+        "challenge_reset_timer" to "يتجدد خلال",
+        "filter_all" to "الكل",
+        "filter_combat" to "المعارك والانتصارات",
+        "filter_tactics" to "التكتيك والجدران",
+        "filter_secret" to "الإتقان والتحديات الخاصة",
+        "smart_notifications_title" to "تنبيهات التحديات الذكية",
+        "smart_notifications_desc" to "تلقي تنبيهات يومية بالتحديات الجديدة والاحتفال بالإنجازات",
+        "classic_mode" to "الوضع الكلاسيكي ♟️",
+        "classic_mode_short" to "كلاسيكي ♟️",
+        "race_mode_title" to "وضع السباق السريع 🏁",
+        "quad_mode_title" to "الوضع الرباعي (٤ لاعبين) 🎯",
+        "notif_daily_reminder_title" to "تحدي يومي جديد متاح الآن!",
+        "diff_easy" to "سهل",
+        "diff_medium" to "متوسط",
+        "diff_hard" to "صعب"
     )
 }

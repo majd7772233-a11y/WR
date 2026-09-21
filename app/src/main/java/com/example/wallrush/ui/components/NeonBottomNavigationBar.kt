@@ -65,18 +65,11 @@ fun NeonBottomNavigationBar(
                 fallbackLabelAr = "الرئيسية"
             ),
             NavDestination(
-                screen = ScreenState.LEVEL_EDITOR,
-                icon = Icons.Default.Map,
-                labelKey = "level_editor",
-                fallbackLabelEn = "Editor",
-                fallbackLabelAr = "المحرر"
-            ),
-            NavDestination(
-                screen = ScreenState.LEADERBOARD,
-                icon = Icons.Default.EmojiEvents,
-                labelKey = "leaderboard",
-                fallbackLabelEn = "Rank",
-                fallbackLabelAr = "التصنيف"
+                screen = ScreenState.PROFILE,
+                icon = Icons.Default.Person,
+                labelKey = "profile",
+                fallbackLabelEn = "Profile",
+                fallbackLabelAr = "الملف الشخصي"
             ),
             NavDestination(
                 screen = ScreenState.ACHIEVEMENTS,
@@ -98,7 +91,8 @@ fun NeonBottomNavigationBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .navigationBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(

@@ -23,15 +23,15 @@ object ProgressionManager {
     const val MAX_LEVEL = 100
 
     /**
-     * Scaling XP curve for Levels 1 to 100:
-     * Level 1 -> Level 2: 150 XP
-     * Level 50 -> 50,000 XP
-     * Level 100 -> ~250,000 XP total
+     * Balanced, rewarding XP curve for Levels 1 to 100:
+     * Level 1 -> Level 2: 430 XP (requires 3-4 standard wins or 2 S+ wins)
+     * Level 2 -> Level 3: 1,020 XP total
+     * Level 10 -> ~10,000 XP total
      */
     fun xpRequiredForLevel(level: Int): Long {
         if (level <= 1) return 0L
         val lvl = level - 1
-        return (lvl * 120L) + (lvl * lvl * 25L)
+        return (lvl * 350L) + (lvl * lvl * 80L)
     }
 
     fun calculateLevelFromXp(totalXp: Long): Int {

@@ -133,7 +133,7 @@ object ComboManager {
     }
 
     /**
-     * Calculates the end-of-match rating, accuracy, star rating, and bonus XP.
+     * Calculates realistic, authentic end-of-match rating, actual move counts, decision accuracy, and fair XP.
      */
     fun calculateMatchRating(
         state: GameState,
@@ -141,24 +141,40 @@ object ComboManager {
         localPlayerId: PlayerId,
         powerupsUsed: Int = 0
     ): MatchRating {
-        val totalMoves = (state.moveCount / 2).coerceAtLeast(1)
-        val dodges = (state.eventHistory.count { it is com.example.wallrush.domain.model.GameEvent.PawnMoved } / 3).coerceAtLeast(1)
+        val playerPawnMoves = state.eventHistory
+            .filterIsInstance<com.example.wallrush.domain.model.GameEvent.PawnMoved>()
+            .filter { it.player == localPlayerId }
+        val playerWallsPlaced = state.eventHistory
+            .filterIsInstance<com.example.wallrush.domain.model.GameEvent.WallPlaced>()
+            .filter { it.player == localPlayerId }
+        val opponentWallsPlaced = state.eventHistory
+            .filterIsInstance<com.example.wallrush.domain.model.GameEvent.WallPlaced>()
+            .filter { it.player != localPlayerId }
+
+        val myMoveCount = playerPawnMoves.size.coerceAtLeast(1)
         val nearMisses = state.nearMissCount
         val maxCombo = state.maxCombo
-
-        // Ideal path from start row to goal row is 8 moves
-        val optimalMoves = 8
-        val actualMoves = totalMoves
-        val accuracy = ((optimalMoves.toFloat() / actualMoves.coerceAtLeast(optimalMoves)) * 100).toInt().coerceIn(45, 100)
-
         val isWon = state.winner == localPlayerId
-        val isPerfect = isWon && accuracy >= 85 && nearMisses >= 2 && maxCombo >= 3
+
+        // Baseline direct distance from row 8 to row 0 is 8 steps
+        val baseShortestPath = 8
+        // Account for opponent walls forcing detours
+        val effectiveShortestPath = (baseShortestPath + (opponentWallsPlaced.size * 0.75f).toInt()).coerceAtLeast(baseShortestPath)
+        val accuracy = if (isWon) {
+            ((effectiveShortestPath.toFloat() / myMoveCount) * 100).toInt().coerceIn(55, 100)
+        } else {
+            ((effectiveShortestPath.toFloat() / myMoveCount.coerceAtLeast(12)) * 80).toInt().coerceIn(35, 75)
+        }
+
+        val dodgesCount = nearMisses.coerceAtLeast(0)
+
+        val isPerfect = isWon && accuracy >= 88 && myMoveCount <= 14 && durationSeconds <= 120
 
         val stars = when {
             isPerfect -> 5
-            isWon && accuracy >= 75 -> 4
+            isWon && accuracy >= 78 -> 4
             isWon -> 3
-            accuracy >= 70 -> 2
+            accuracy >= 65 -> 2
             else -> 1
         }
 
@@ -170,11 +186,20 @@ object ComboManager {
             else -> "C"
         }
 
-        val bonusXp = (stars * 70L) + (nearMisses * 25L) + (maxCombo * 15L) + if (isPerfect) 250L else 0L
+        // Fair, controlled bonus XP: losses give negligible effort XP, victories award reasonable progress
+        val bonusXp = if (isWon) {
+            when (stars) {
+                5 -> 180L + (maxCombo * 10L)
+                4 -> 120L + (maxCombo * 5L)
+                else -> 70L
+            }
+        } else {
+            if (stars == 2) 15L else 5L
+        }
 
         return MatchRating(
             accuracyPercent = accuracy,
-            dodgesCount = dodges,
+            dodgesCount = dodgesCount,
             nearMissesCount = nearMisses,
             powerupsUsedCount = powerupsUsed,
             timeSeconds = durationSeconds,

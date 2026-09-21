@@ -153,7 +153,7 @@ fun MatchRatingDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (isAr) "متابعة" else "Continue",
+                    text = if (isAr) "موافق" else "OK",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
@@ -275,7 +275,7 @@ fun LevelUpCelebrationDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (isAr) "رائع! استمر" else "Awesome! Continue",
+                    text = if (isAr) "موافق" else "OK",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )

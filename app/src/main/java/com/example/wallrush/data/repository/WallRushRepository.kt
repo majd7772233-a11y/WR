@@ -91,8 +91,17 @@ class WallRushRepository(private val database: AppDatabase) {
         val newLosses = if (!isWin && state.winner != null) profile.losses + 1 else profile.losses
         val newStreak = if (isWin) profile.currentStreak + 1 else 0
         val newBestStreak = maxOf(profile.bestStreak, newStreak)
-        val ratingDelta = if (isWin) 25 else if (state.winner != null) -15 else 0
-        val newRating = maxOf(800, profile.ratingScore + ratingDelta)
+        val opponentRating = if (isWin) profile.ratingScore + 100 else profile.ratingScore - 50
+        val ratingDelta = if (state.winner != null) {
+            com.example.wallrush.domain.rank.RankManager.calculateRatingDelta(
+                isWon = isWin,
+                playerRating = profile.ratingScore,
+                opponentRating = opponentRating,
+                moveCount = state.moveCount,
+                accuracyPercent = 80
+            )
+        } else 0
+        val newRating = maxOf(0, profile.ratingScore + ratingDelta)
         val localPlayer = state.getPlayer(localPlayerId)
         val wallsUsedByLocal = state.rules.wallsPerPlayer - localPlayer.remainingWalls
 
